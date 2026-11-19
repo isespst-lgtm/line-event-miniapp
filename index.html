@@ -46,7 +46,25 @@
     let orgId = "";
     let submitting = false;
 
+    // 開発中は true。エラー時に、受信したURLのパラメータを画面に表示する（本番では false に）
+    const DEBUG = true;
+
     const $ = (id) => document.getElementById(id);
+
+    function readEventParams() {
+      const params = new URLSearchParams(location.search);
+      let ev = params.get("event_id") || "";
+      let og = params.get("org_id") || "";
+      // LINEのログイン処理などで、パラメータが liff.state に入って届く場合に備える
+      const state = params.get("liff.state");
+      if ((!ev || !og) && state) {
+        const i = state.indexOf("?");
+        const inner = new URLSearchParams(i >= 0 ? state.slice(i + 1) : state);
+        ev = ev || inner.get("event_id") || "";
+        og = og || inner.get("org_id") || "";
+      }
+      return { eventId: ev, orgId: og };
+    }
 
     function show(text, kind) {
       const el = $("message");
@@ -71,11 +89,12 @@
         }
 
         // イベント・団体は URL パラメータで指定: ...?event_id=evt_001&org_id=org_001
-        const params = new URLSearchParams(location.search);
-        eventId = params.get("event_id") || "";
-        orgId = params.get("org_id") || "";
+        const found = readEventParams();
+        eventId = found.eventId;
+        orgId = found.orgId;
         if (!/^evt_\d+$/.test(eventId) || !/^org_\d+$/.test(orgId)) {
-          show("イベントの指定が正しくありません。案内のリンクからもう一度開いてください。", "error");
+          show("イベントの指定が正しくありません。案内のリンクからもう一度開いてください。" +
+               (DEBUG ? "（受信したURLの条件: " + (location.search || "なし") + "）" : ""), "error");
           return;
         }
 
