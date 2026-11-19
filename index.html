@@ -1,2 +1,159 @@
-const WEBHOOK_URL = https://hook.eu1.make.com/ldih4g5fep8fd2twosagkrsb9dolku82;
-// liffId は後で入れるので、最初は空や仮でも可
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>イベント申込</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0; padding: 16px; color: #222; }
+    h2 { margin: 0 0 16px; font-size: 20px; }
+    label { display: block; margin-bottom: 14px; font-size: 14px; }
+    input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 10px; font-size: 16px; border: 1px solid #bbb; border-radius: 6px; }
+    .req::after { content: " *"; color: #c00; }
+    button { width: 100%; padding: 14px; font-size: 16px; border: 0; border-radius: 8px; background: #06c755; color: #fff; }
+    button:disabled { background: #9bd9b3; }
+    #message { margin-top: 12px; min-height: 1.5em; font-size: 14px; }
+    #message.error { color: #c00; }
+    #message.ok { color: #067d34; }
+  </style>
+</head>
+<body>
+  <h2>イベント申込</h2>
+
+  <form id="form" novalidate>
+    <label><span class="req">氏名</span> <input type="text" id="name" autocomplete="name"></label>
+    <label>フリガナ <input type="text" id="kana"></label>
+    <label>電話番号 <input type="tel" id="phone" autocomplete="tel"></label>
+    <label>メール <input type="email" id="email" autocomplete="email"></label>
+    <label><span class="req">参加人数</span> <input type="number" id="party_size" value="1" min="1" max="20"></label>
+    <label>備考 <input type="text" id="note"></label>
+    <p style="font-size:12px;color:#666;margin:0 0 12px;">電話番号またはメールのどちらかは必ず入力してください。</p>
+    <button type="submit" id="submitBtn" disabled>申し込む</button>
+  </form>
+  <p id="message"></p>
+
+  <script>
+    // Make のWebhook URL（公開されても、LINEのIDトークン検証を通らない送信は受け付けません）
+    const WEBHOOK_URL = "https://hook.eu1.make.com/tt9sc38qgryqwpi377x18cw38jis13l4";
+
+    // ★ LINE Developers コンソール［ウェブアプリ設定］タブの LIFF ID を入れる
+    //   （開発中は「開発用」内部チャネルのLIFF ID）
+    const LIFF_ID = "YOUR_LIFF_ID";
+
+    let idToken = null;
+    let eventId = "";
+    let orgId = "";
+    let submitting = false;
+
+    const $ = (id) => document.getElementById(id);
+
+    function show(text, kind) {
+      const el = $("message");
+      el.textContent = text;
+      el.className = kind || "";
+    }
+
+    async function initLiff() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+
+        // 外部ブラウザで開かれた場合はLINEログインへ
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        idToken = liff.getIDToken();
+        if (!idToken) {
+          show("LINEログイン情報を取得できませんでした。ミニアプリを開き直してください。", "error");
+          return;
+        }
+
+        // イベント・団体は URL パラメータで指定: ...?event_id=evt_001&org_id=org_001
+        const params = new URLSearchParams(location.search);
+        eventId = params.get("event_id") || "";
+        orgId = params.get("org_id") || "";
+        if (!/^evt_\d+$/.test(eventId) || !/^org_\d+$/.test(orgId)) {
+          show("イベントの指定が正しくありません。案内のリンクからもう一度開いてください。", "error");
+          return;
+        }
+
+        $("submitBtn").disabled = false;
+      } catch (e) {
+        console.error(e);
+        show("LINEとの連携の初期化に失敗しました。時間をおいて開き直してください。", "error");
+      }
+    }
+
+    function validate(v) {
+      if (!v.name) return "氏名を入力してください";
+      if (!v.phone && !v.email) return "電話番号またはメールを入力してください";
+      if (v.phone && !/^[0-9０-９+\-ー\s]{8,20}$/.test(v.phone)) return "電話番号の形式を確認してください";
+      if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return "メールアドレスの形式を確認してください";
+      if (!Number.isInteger(v.party_size) || v.party_size < 1 || v.party_size > 20) return "参加人数は1〜20で入力してください";
+      return "";
+    }
+
+    $("form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (submitting || !idToken) return;
+
+      const values = {
+        name: $("name").value.trim(),
+        kana: $("kana").value.trim(),
+        phone: $("phone").value.trim(),
+        email: $("email").value.trim(),
+        party_size: Number($("party_size").value),
+        note: $("note").value.trim()
+      };
+
+      const err = validate(values);
+      if (err) {
+        show(err, "error");
+        return;
+      }
+
+      // ステータスは送らない（Make側で「申込済」を付ける）
+      const body = new URLSearchParams({
+        id_token: idToken,
+        event_id: eventId,
+        org_id: orgId,
+        name: values.name,
+        kana: values.kana,
+        phone: values.phone,
+        email: values.email,
+        party_size: String(values.party_size),
+        note: values.note
+      });
+
+      submitting = true;
+      $("submitBtn").disabled = true;
+      show("送信中...");
+
+      try {
+        // フォーム形式で送る（CORSのプリフライトが発生しない）
+        const res = await fetch(WEBHOOK_URL, { method: "POST", body: body });
+
+        if (res.ok) {
+          show("申込が完了しました", "ok");
+          return; // 二重申込を防ぐため、ボタンは無効のまま
+        }
+        if (res.status === 401) {
+          show("ログインの有効期限が切れました。ミニアプリを開き直してからもう一度お試しください。", "error");
+        } else {
+          show("送信に失敗しました。時間をおいてもう一度お試しください。", "error");
+        }
+      } catch (e) {
+        console.error(e);
+        show("通信エラーが発生しました。申込が届いたか不明な場合は、主催者にご確認ください。", "error");
+      }
+
+      submitting = false;
+      $("submitBtn").disabled = false;
+    });
+
+    initLiff();
+  </script>
+</body>
+</html>
