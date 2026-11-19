@@ -46,8 +46,8 @@
     let orgId = "";
     let submitting = false;
 
-    // 開発中は true。エラー時に、受信したURLのパラメータを画面に表示する（本番では false に）
-    const DEBUG = true;
+    // true にすると、エラー時に受信したURLのパラメータを画面に表示する（調査用。通常は false）
+    const DEBUG = false;
 
     const $ = (id) => document.getElementById(id);
 
