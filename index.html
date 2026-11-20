@@ -20,6 +20,7 @@
 </head>
 <body>
   <h2>イベント申込</h2>
+  <p id="evtinfo" style="font-size:12px;color:#888;margin:-8px 0 12px;"></p>
 
   <form id="form" novalidate>
     <label><span class="req">氏名</span> <input type="text" id="name" autocomplete="name"></label>
@@ -98,6 +99,7 @@
           return;
         }
 
+        $("evtinfo").textContent = "イベントID: " + eventId;
         $("submitBtn").disabled = false;
       } catch (e) {
         console.error(e);
