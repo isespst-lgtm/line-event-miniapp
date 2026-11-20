@@ -160,6 +160,25 @@
         }
         if (res.status === 401) {
           show("ログインの有効期限が切れました。ミニアプリを開き直してからもう一度お試しください。", "error");
+        } else if (res.status === 409) {
+          let data = {};
+          try { data = await res.json(); } catch (_) {}
+          const rem = parseInt(data.remaining, 10);
+          const msgs = {
+            duplicate: "このイベントには、すでに申込済みです。",
+            full: Number.isFinite(rem) && rem > 0
+              ? "定員を超えるため申し込めません。残りは " + rem + " 名です。人数を減らして、もう一度お試しください。"
+              : "定員に達したため、受付を終了しました。",
+            closed: "申込の受付期間が終了しました。",
+            not_found: "このイベントは見つかりません（または受付していません）。",
+            invalid: "入力内容を確認してください。",
+            busy: "混み合っています。少し待って、もう一度お試しください。"
+          };
+          show(msgs[data.error] || "申込を受け付けられませんでした。時間をおいてもう一度お試しください。", "error");
+          if (data.error === "duplicate" || data.error === "closed" || data.error === "not_found" ||
+              (data.error === "full" && !(rem > 0))) {
+            return; // 再送しても通らないので、ボタンは無効のまま
+          }
         } else {
           show("送信に失敗しました。時間をおいてもう一度お試しください。", "error");
         }
