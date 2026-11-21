@@ -22,6 +22,13 @@
   <h2>イベント申込</h2>
   <p id="evtinfo" style="font-size:12px;color:#888;margin:-8px 0 12px;"></p>
 
+  <div id="evcard" style="display:none;border:1px solid #ddd;border-radius:10px;padding:12px;margin:0 0 16px;">
+    <img id="flyer" alt="チラシ" style="display:none;width:100%;border-radius:6px;margin:0 0 10px;">
+    <div id="evtitle" style="font-size:18px;font-weight:bold;margin:0 0 8px;"></div>
+    <div id="evmeta" style="font-size:14px;line-height:1.7;"></div>
+    <div id="evdetail" style="font-size:14px;line-height:1.6;white-space:pre-wrap;margin-top:8px;color:#444;"></div>
+  </div>
+
   <form id="form" novalidate>
     <label><span class="req">氏名</span> <input type="text" id="name" autocomplete="name"></label>
     <label>フリガナ <input type="text" id="kana"></label>
@@ -45,6 +52,9 @@
   <script>
     // Make のWebhook URL（公開されても、LINEのIDトークン検証を通らない送信は受け付けません）
     const WEBHOOK_URL = "https://hook.eu1.make.com/tt9sc38qgryqwpi377x18cw38jis13l4";
+
+    // イベント情報の取得先（申込受付のGASのWebアプリのURL。公開してよい情報だけを返す）
+    const INFO_URL = "https://script.google.com/macros/s/AKfycbyTZuvCGjji9yys3OoMYIYJt49GeAcNE3Pn0j5_OZfB3HNYQc6_qBJ7-KdMWzZM7NPqiA/exec";
 
     // ★ LINE Developers コンソール［ウェブアプリ設定］タブの LIFF ID を入れる
     //   （開発中は「開発用」内部チャネルのLIFF ID）
@@ -108,11 +118,58 @@
         }
 
         $("evtinfo").textContent = "イベントID: " + eventId;
+
+        // イベントの内容を表示する（取得できなくても、申込自体はできる。サーバー側でも確認する）
+        const closedForm = await loadEventInfo();
+        if (closedForm) return;
         $("submitBtn").disabled = false;
       } catch (e) {
         console.error(e);
         show("LINEとの連携の初期化に失敗しました。時間をおいて開き直してください。", "error");
       }
+    }
+
+    // イベント情報を表示する。申込を受け付けない状態なら、フォームを隠して true を返す
+    async function loadEventInfo() {
+      try {
+        const res = await fetch(INFO_URL + "?event_id=" + encodeURIComponent(eventId) + "&org_id=" + encodeURIComponent(orgId));
+        const data = await res.json();
+        if (!data.ok) {
+          if (data.error === "not_found") {
+            $("form").style.display = "none";
+            show("このイベントは見つかりません（または受付していません）。", "error");
+            return true;
+          }
+          return false;
+        }
+        const ev = data.event;
+        $("evtitle").textContent = ev.title;
+        const lines = [];
+        if (ev.date) lines.push("日時：" + ev.date.replace(/-/g, "/") + (ev.time ? " " + ev.time : ""));
+        if (ev.place) lines.push("場所：" + ev.place);
+        if (ev.capacity > 0) lines.push("定員：" + ev.capacity + "名（残り " + ev.remaining + "名）");
+        if (ev.deadline) lines.push("申込締切：" + ev.deadline.replace(/-/g, "/"));
+        $("evmeta").textContent = lines.join("\n");
+        $("evmeta").style.whiteSpace = "pre-line";
+        $("evdetail").textContent = ev.detail || "";
+        if (ev.flyer && /^https:\/\//.test(ev.flyer)) {
+          const img = $("flyer");
+          img.onerror = () => { img.style.display = "none"; };
+          img.onload = () => { img.style.display = "block"; };
+          img.onclick = () => { try { liff.openWindow({ url: ev.flyer, external: true }); } catch (_) {} };
+          img.src = ev.flyer;
+        }
+        $("evcard").style.display = "block";
+
+        if (ev.state === "closed" || ev.state === "full") {
+          $("form").style.display = "none";
+          show(ev.state === "closed" ? "申込の受付期間が終了しました。" : "定員に達したため、受付を終了しました。", "error");
+          return true;
+        }
+      } catch (e) {
+        console.error(e); // 表示に失敗しても、申込フォームは使えるようにしておく
+      }
+      return false;
     }
 
     function validate(v) {
