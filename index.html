@@ -13,6 +13,8 @@
     .req::after { content: " *"; color: #c00; }
     button { width: 100%; padding: 14px; font-size: 16px; border: 0; border-radius: 8px; background: #06c755; color: #fff; }
     button:disabled { background: #9bd9b3; }
+    label.chk { display: inline-block; width: 48%; margin: 0 0 8px; }
+    label.chk input { display: inline-block; width: auto; margin: 0 6px 0 0; vertical-align: middle; }
     #message { margin-top: 12px; min-height: 1.5em; font-size: 14px; }
     #message.error { color: #c00; }
     #message.ok { color: #067d34; }
@@ -30,6 +32,25 @@
     <label><span class="req">参加人数</span> <input type="number" id="party_size" value="1" min="1" max="20"></label>
     <label>備考 <input type="text" id="note"></label>
     <p style="font-size:12px;color:#666;margin:0 0 12px;">電話番号またはメールのどちらかは必ず入力してください。</p>
+
+    <fieldset style="border:1px solid #ddd;border-radius:8px;margin:0 0 14px;padding:10px 12px;">
+      <legend style="font-size:13px;padding:0 4px;">新着イベントのお知らせ（任意）</legend>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+        <input type="checkbox" id="consent" style="width:auto;margin-top:3px;">
+        <span>興味のある分野の新着イベント情報を、LINEで受け取る（いつでも停止できます）</span>
+      </label>
+      <div id="interests" style="display:none;">
+        <p style="font-size:12px;color:#666;margin:4px 0;">受け取りたい分野（未選択の場合は全分野）</p>
+        <label class="chk"><input type="checkbox" name="interest" value="子育て">子育て</label>
+        <label class="chk"><input type="checkbox" name="interest" value="健康">健康</label>
+        <label class="chk"><input type="checkbox" name="interest" value="学び・講座">学び・講座</label>
+        <label class="chk"><input type="checkbox" name="interest" value="地域活動">地域活動</label>
+        <label class="chk"><input type="checkbox" name="interest" value="文化・芸術">文化・芸術</label>
+        <label class="chk"><input type="checkbox" name="interest" value="スポーツ">スポーツ</label>
+        <label class="chk"><input type="checkbox" name="interest" value="中間支援">中間支援</label>
+        <label class="chk"><input type="checkbox" name="interest" value="その他">その他</label>
+      </div>
+    </fieldset>
     <button type="submit" id="submitBtn" disabled>申し込む</button>
   </form>
   <p id="message"></p>
@@ -128,6 +149,10 @@
         party_size: Number($("party_size").value),
         note: $("note").value.trim()
       };
+      const consent = $("consent").checked;
+      const interests = consent
+        ? Array.from(document.querySelectorAll('input[name="interest"]:checked')).map((c) => c.value).join(",")
+        : "";
 
       const err = validate(values);
       if (err) {
@@ -145,7 +170,9 @@
         phone: values.phone,
         email: values.email,
         party_size: String(values.party_size),
-        note: values.note
+        note: values.note,
+        consent: consent ? "1" : "0",
+        interests: interests
       });
 
       submitting = true;
@@ -157,7 +184,11 @@
         const res = await fetch(WEBHOOK_URL, { method: "POST", body: body });
 
         if (res.ok) {
-          show("申込が完了しました", "ok");
+          show("申込が完了しました" + (consent ? "。新着イベントのお知らせを登録しました。" : ""), "ok");
+          if (consent) {
+            // 公式アカウントを友だち追加していない場合に、追加を案内する
+            try { await liff.requestFriendship(); } catch (_) {}
+          }
           return; // 二重申込を防ぐため、ボタンは無効のまま
         }
         if (res.status === 401) {
@@ -191,6 +222,10 @@
 
       submitting = false;
       $("submitBtn").disabled = false;
+    });
+
+    $("consent").addEventListener("change", () => {
+      $("interests").style.display = $("consent").checked ? "block" : "none";
     });
 
     initLiff();
