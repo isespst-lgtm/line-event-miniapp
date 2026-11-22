@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>団体ホーム｜おいない</title>
+<style>
+  body { font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0; background: #f4f6f4; color: #222; }
+  header { background: #2e7d5b; color: #fff; padding: 14px 16px; font-size: 18px; font-weight: bold; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  input[type=password], input[type=text] { width: 100%; box-sizing: border-box; padding: 10px; font-size: 16px; border: 1px solid #bbb; border-radius: 6px; }
+  button { background: #2e7d5b; color: #fff; border: 0; border-radius: 6px; padding: 10px 16px; font-size: 15px; cursor: pointer; }
+  button.sub { background: #fff; color: #2e7d5b; border: 1px solid #2e7d5b; }
+  .err { color: #b00020; margin-top: 8px; }
+  .muted { color: #666; font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e0e0e0; }
+  .tag.pub { background: #c8e6c9; } .tag.wait { background: #ffe0b2; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #eee; padding: 6px 4px; text-align: left; vertical-align: top; word-break: break-all; }
+  .scroll { overflow-x: auto; }
+  .notice { font-size: 12px; color: #8a4b00; background: #fff6e5; border-radius: 6px; padding: 8px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>団体ホーム（おいない）</header>
+<main>
+  <div id="login" class="card">
+    <p>登録団体の方は、登録のお知らせメールに書かれた「登録コード」を入力してください。</p>
+    <input id="code" type="password" autocomplete="off" placeholder="登録コード">
+    <p><button id="go">開く</button></p>
+    <div id="err" class="err"></div>
+    <p class="muted">登録コードは、他の方に教えないでください。なくした場合は、事務局（urata@e-ise.net）へご連絡ください。</p>
+  </div>
+  <div id="home" style="display:none"></div>
+</main>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbyTZuvCGjji9yys3OoMYIYJt49GeAcNE3Pn0j5_OZfB3HNYQc6_qBJ7-KdMWzZM7NPqiA/exec";
+const $ = function (id) { return document.getElementById(id); };
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+
+let DATA = null;
+
+async function load(code) {
+  const body = new URLSearchParams({ action: "org_home", code: code });
+  const res = await fetch(API_URL, { method: "POST", body: body });
+  return res.json();
+}
+
+$("go").onclick = async function () {
+  const code = $("code").value.trim();
+  $("err").textContent = "";
+  if (!code) { $("err").textContent = "登録コードを入力してください"; return; }
+  $("go").disabled = true;
+  try {
+    const d = await load(code);
+    if (!d.ok) {
+      $("err").textContent = d.error === "unauthorized" ? "登録コードが違います。もう一度ご確認ください。"
+        : d.error === "busy" ? "しばらくしてから、もう一度お試しください。" : "表示できませんでした。";
+      return;
+    }
+    DATA = d; $("code").value = "";
+    render();
+  } catch (e) {
+    $("err").textContent = "通信に失敗しました。もう一度お試しください。";
+  } finally { $("go").disabled = false; }
+};
+
+function statusTag(s) { return '<span class="tag ' + (s === "公開" ? "pub" : s === "確認待ち" ? "wait" : "") + '">' + esc(s || "-") + "</span>"; }
+
+function render() {
+  const d = DATA;
+  let h = '<div class="card"><div class="row"><div><b>' + esc(d.org.name) + '</b><div class="muted">' + esc(d.org.id) +
+    "｜担当：" + esc(d.org.contact) + "｜" + esc(d.org.email) + '</div></div><button class="sub" id="out">閉じる</button></div>' +
+    '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
+  if (!d.events.length) h += '<div class="card muted">まだ、イベントが登録されていません。</div>';
+  d.events.forEach(function (ev, i) {
+    const act = ev.applicants.filter(function (a) { return a.status === "申込済"; });
+    h += '<div class="card"><div class="row"><b>' + esc(ev.title) + "</b>" + statusTag(ev.status) + "</div>" +
+      '<div class="muted">' + esc(ev.id) + "｜" + esc(ev.date) + " " + esc(ev.time) + "｜" + esc(ev.place) + "</div>" +
+      "<p>申込：<b>" + ev.used + "名</b>（" + act.length + "件）" + (ev.capacity ? " ／ 定員 " + ev.capacity + "名・残り " + ev.remaining + "名" : "") +
+      (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + "</p>" +
+      '<button class="sub" data-t="' + i + '">申込者を見る</button> <button class="sub" data-c="' + i + '">CSVで保存</button>' +
+      '<div id="ap' + i + '" class="scroll" style="display:none"></div></div>';
+  });
+  $("home").innerHTML = h;
+  $("login").style.display = "none"; $("home").style.display = "block";
+  $("out").onclick = function () { DATA = null; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
+  document.querySelectorAll("[data-t]").forEach(function (b) { b.onclick = function () { toggle(+b.dataset.t); }; });
+  document.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { csv(+b.dataset.c); }; });
+}
+
+function toggle(i) {
+  const box = $("ap" + i);
+  if (box.style.display === "block") { box.style.display = "none"; return; }
+  const l = DATA.events[i].applicants;
+  box.innerHTML = l.length ? "<table><tr><th>氏名</th><th>人数</th><th>電話</th><th>メール</th><th>備考</th><th>申込日時</th><th>状態</th></tr>" +
+    l.map(function (a) { return "<tr><td>" + esc(a.name) + "<br><span class='muted'>" + esc(a.kana) + "</span></td><td>" + a.party + "</td><td>" + esc(a.phone) +
+      "</td><td>" + esc(a.email) + "</td><td>" + esc(a.note) + "</td><td>" + esc(a.at) + "</td><td>" + esc(a.status) + "</td></tr>"; }).join("") + "</table>"
+    : '<p class="muted">まだ申込はありません。</p>';
+  box.style.display = "block";
+}
+
+function csv(i) {
+  const ev = DATA.events[i];
+  const q = function (s) { s = String(s == null ? "" : s); if (/^[=+\-@]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  const lines = [["氏名", "ふりがな", "人数", "電話", "メール", "備考", "申込日時", "状態"].map(q).join(",")];
+  ev.applicants.forEach(function (a) { lines.push([a.name, a.kana, a.party, a.phone, a.email, a.note, a.at, a.status].map(q).join(",")); });
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = ev.id + "_申込者.csv"; a.click();
+}
+</script>
+</body>
+</html>
