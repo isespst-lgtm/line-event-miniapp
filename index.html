@@ -44,6 +44,17 @@
         <input type="checkbox" id="consent" style="width:auto;margin-top:3px;">
         <span>新しく登録されたイベントの情報を、LINEで受け取る（いつでも停止できます）</span>
       </label>
+      <div id="scopebox" style="display:none;font-size:14px;margin:0 0 4px 26px;">
+        <p style="font-size:12px;color:#666;margin:0 0 6px;">受け取る範囲</p>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;">
+          <input type="radio" name="scope" value="all" checked style="width:auto;margin-top:3px;">
+          <span>すべての団体の新着イベント</span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:0;">
+          <input type="radio" name="scope" value="org" style="width:auto;margin-top:3px;">
+          <span>このイベントの主催団体の新着イベントだけ</span>
+        </label>
+      </div>
     </fieldset>
     <button type="submit" id="submitBtn" disabled>申し込む</button>
   </form>
@@ -194,6 +205,8 @@
         note: $("note").value.trim()
       };
       const consent = $("consent").checked;
+      const scopeEl = document.querySelector('input[name="scope"]:checked');
+      const scope = consent && scopeEl ? scopeEl.value : "";
 
       const err = validate(values);
       if (err) {
@@ -212,7 +225,8 @@
         email: values.email,
         party_size: String(values.party_size),
         note: values.note,
-        consent: consent ? "1" : "0"
+        consent: consent ? "1" : "0",
+        scope: scope
       });
 
       submitting = true;
@@ -262,6 +276,10 @@
 
       submitting = false;
       $("submitBtn").disabled = false;
+    });
+
+    $("consent").addEventListener("change", () => {
+      $("scopebox").style.display = $("consent").checked ? "block" : "none";
     });
 
     initLiff();
