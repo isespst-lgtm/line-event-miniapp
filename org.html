@@ -289,7 +289,7 @@ async function act(a, i, j, btn) {
   if (a === "unpub" || a === "reopen") {
     if (!confirm(a === "unpub" ? "このイベントの公開を止めます。新しい申込は、できなくなります。よろしいですか？" : "このイベントを、公開に戻します。よろしいですか？")) return;
     await run(btn, "ev_" + k, async function () {
-      const d = await post("org_event_status", { event_id: k, op: a });
+      const d = await post("org_event_status", { event_id: k, op: a === "unpub" ? "unpublish" : "reopen" });
       if (!d.ok) { setMsg("ev_" + k, "err", errText(d)); return; }
       await reload();
       setMsg("ev_" + k, "ok", a === "unpub" ? "公開を止めました。" : "公開に戻しました。");
