@@ -34,6 +34,17 @@
   .chk { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 2px; font-size: 14px; }
   .chk input { margin-top: 3px; }
   .panel { border-top: 1px solid #eee; margin-top: 12px; padding-top: 4px; }
+  .bk { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 40; }
+  .panel.modal { position: fixed; z-index: 50; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(94vw, 640px); max-height: 88vh; overflow-y: auto;
+    box-sizing: border-box; background: #fff; border: 3px solid #2e7d5b; border-radius: 12px; padding: 0 16px 14px; margin: 0; }
+  .panel.modal.edit { border-color: #1565c0; } .panel.modal.cx { border-color: #b00020; } .panel.modal.set { border-color: #555; }
+  .mhead { position: sticky; top: 0; z-index: 1; margin: 0 -16px 8px; padding: 10px 16px; background: #2e7d5b; color: #fff; font-weight: bold; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .edit .mhead { background: #1565c0; } .cx .mhead { background: #b00020; } .set .mhead { background: #555; }
+  .mhead button { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.7); padding: 2px 10px; font-size: 14px; margin: 0; }
+  .mfoot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  button.cancel { background: #fff; color: #555; border: 1px solid #999; }
+  .linkrow { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; }
+  .linkrow input { font-size: 12px; padding: 5px; }
   .btns { margin-top: 8px; }
 </style>
 </head>
@@ -78,7 +89,8 @@ function errText(d) {
   if (d.error === "invalid" && d.field) return "「" + d.field + "」の入力を、ご確認ください。";
   if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
   if (d.error === "full") return "定員を超えるため、戻せません（空きは " + (d.remaining || 0) + " 名です）。";
-  return ERR[d.error] || "処理できませんでした。";
+  if (d.error === "invalid") return "処理できませんでした（入力内容、または、サーバー側の更新が反映されていない可能性があります）。改善しないときは、事務局へご連絡ください。";
+  return ERR[d.error] || "処理できませんでした（" + (d.error || "不明") + "）。";
 }
 function setMsg(k, kind, text) {
   MSG[k] = { kind: kind, text: text };
@@ -132,9 +144,11 @@ function readEv(px) {
 
 function render() {
   const d = DATA, st = d.settings;
-  let h = '<div class="card"><div class="row"><div><b>' + esc(d.org.name) + '</b><div class="muted">' + esc(d.org.id) +
+  let h = '<div class="bk" style="display:' + (anyModal() ? "block" : "none") + '"></div>' + msgHtml("top") +
+    '<div class="card"><div class="row"><div><b>' + esc(d.org.name) + '</b><div class="muted">' + esc(d.org.id) +
     "｜担当：" + esc(d.org.contact) + "｜" + esc(d.org.email) + '</div></div><div><button class="sub" id="setbtn">設定</button> <button class="sub" id="out">閉じる</button></div></div>' +
-    '<div id="setpanel" class="panel" style="display:' + disp("set") + '">' +
+    '<div id="setpanel" class="panel modal set" style="display:' + disp("set") + '">' +
+      '<div class="mhead"><span>設定</span><button data-close="set">× 閉じる</button></div>' +
       '<label class="f">担当者のお名前</label><input type="text" id="s_contact" maxlength="50" value="' + esc(d.org.contact) + '">' +
       '<label class="f">担当者のメールアドレス（登録コードなどのご連絡先）</label><input type="email" id="s_email" maxlength="100" value="' + esc(d.org.email) + '">' +
       '<div class="chk"><input type="checkbox" id="s_notify"' + (st.notify ? " checked" : "") + '><label for="s_notify">申込があったとき、メールで知らせる（氏名と人数だけをお知らせします）</label></div>' +
@@ -143,17 +157,18 @@ function render() {
       '<div class="chk"><input type="checkbox" id="s_flyer"' + (st.flyer ? " checked" : "") + '><label for="s_flyer">LINEの配信に、チラシの画像を付ける（画像を付けると、配信の通数が2倍になります）</label></div>' +
       '<label class="f">LINEの配信に添える、ひとこと（80文字まで。URLやメールアドレスは入れられません）</label><input type="text" id="s_note" maxlength="80" value="' + esc(st.note) + '">' +
       '<div class="muted" style="margin-top:8px">配信の見え方（例）</div><pre id="s_prev" style="background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;white-space:pre-wrap;margin:4px 0 0"></pre>' +
-      '<p><button id="s_save">設定を保存</button></p>' + msgHtml("set") + '</div>' +
+      '<div class="mfoot"><button id="s_save">設定を保存</button><button class="cancel" data-close="set">取り消し（閉じる）</button></div>' + msgHtml("set") + '</div>' +
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
 
   // 新しいイベントの登録
   const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "" };
   h += '<div class="card"><div class="row"><b>イベントを登録する</b><button id="newbtn">新しいイベントを登録</button></div>' +
-    '<div id="p_new" class="panel" style="display:' + disp("new") + '">' +
+    '<div id="p_new" class="panel modal new" style="display:' + disp("new") + '">' +
+    '<div class="mhead"><span>' + (COPY ? "イベントをコピーして登録" : "新しいイベントを登録") + '</span><button data-close="new">× 閉じる</button></div>' +
     (COPY ? '<div class="notice">「' + esc(COPY.title) + '」の内容をコピーしました。開催日と締切は、入れ直してください。</div>' : "") +
     evFields("n_", blank) +
     '<div class="notice">登録したイベントは、事務局が内容を確認してから、公開します。公開されるまでは、申込できません。</div>' +
-    '<p><button id="n_save">この内容で登録する</button></p>' + msgHtml("new") + '</div></div>';
+    '<div class="mfoot"><button id="n_save">この内容で登録する</button><button class="cancel" data-close="new">取り消し（登録しない）</button></div>' + msgHtml("new") + '</div></div>';
 
   if (!d.events.length) h += '<div class="card muted">まだ、イベントが登録されていません。</div>';
   d.events.forEach(function (ev, i) {
@@ -164,6 +179,7 @@ function render() {
       '<div class="muted">' + esc(ev.id) + "｜" + esc(ev.date) + " " + esc(ev.time) + "｜" + esc(ev.place) + "</div>" +
       "<p>申込：<b>" + ev.used + "名</b>（" + act.length + "件）" + (ev.capacity ? " ／ 定員 " + ev.capacity + "名・残り " + ev.remaining + "名" : "") +
       (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + "</p>" +
+      (ev.status === "公開" && ev.link ? '<div class="linkrow"><span>申込リンク</span><input type="text" readonly value="' + esc(ev.link) + '" onclick="this.select()"><button class="sub mini" data-a="lnk" data-i="' + i + '">コピー</button></div>' : "") +
       '<div class="btns">' +
       '<button class="sub" data-a="ap" data-i="' + i + '">申込者を見る</button> <button class="sub" data-a="csv" data-i="' + i + '">CSVで保存</button> ' +
       (canEdit ? '<button class="sub" data-a="ed" data-i="' + i + '">内容を修正</button> ' : "") +
@@ -173,18 +189,21 @@ function render() {
       (["公開", "非公開", "確認待ち"].indexOf(ev.status) >= 0 ? '<button class="warn" data-a="cx" data-i="' + i + '">中止にする</button>' : "") +
       '</div>' + msgHtml("ev_" + k) +
       '<div id="p_ap_' + k + '" class="scroll" style="display:' + disp("ap_" + k) + '">' + applicantsHtml(ev, i) + '</div>' +
-      '<div id="p_ed_' + k + '" class="panel" style="display:' + disp("ed_" + k) + '">' +
+      '<div id="p_ed_' + k + '" class="panel modal edit" style="display:' + disp("ed_" + k) + '">' +
+        '<div class="mhead"><span>内容を修正：' + esc(ev.title) + '</span><button data-close="ed_' + k + '">× 閉じる</button></div>' +
         '<div class="notice">イベント名・日時・場所・詳細・チラシを変えると、公開中のイベントは、事務局が確認するまで、いったん非公開（確認待ち）になり、新しい申込ができなくなります。定員と締切の変更だけなら、すぐに反映されます。すでに申し込まれた方への連絡は、団体で行ってください。</div>' +
         evFields("e_" + k + "_", ev.edit) +
-        '<p><button data-a="saveed" data-i="' + i + '">修正を保存</button></p>' + msgHtml("ed_" + k) + '</div>' +
-      '<div id="p_cx_' + k + '" class="panel" style="display:' + disp("cx_" + k) + '">' +
+        '<div class="mfoot"><button data-a="saveed" data-i="' + i + '">修正を保存</button><button class="cancel" data-close="ed_' + k + '">取り消し（直さない）</button></div>' + msgHtml("ed_" + k) + '</div>' +
+      '<div id="p_cx_' + k + '" class="panel modal cx" style="display:' + disp("cx_" + k) + '">' +
+        '<div class="mhead"><span>中止にする：' + esc(ev.title) + '</span><button data-close="cx_' + k + '">× 閉じる</button></div>' +
         '<div class="notice">中止にすると、このイベントの申込は、受け付けなくなります。元に戻すには、事務局への連絡が必要です。</div>' +
         '<div class="chk"><input type="checkbox" id="cxn_' + k + '" checked><label for="cxn_' + k + '">申込済みの方（' + act.length + '件）のうち、公式アカウントを友だち追加している方に、LINEで中止を連絡する</label></div>' +
         '<label class="f">主催団体からのひとこと（任意・100文字まで。URLやメールアドレスは入れられません）</label><input type="text" id="cxm_' + k + '" maxlength="100">' +
-        '<p><button class="warn" data-a="cxgo" data-i="' + i + '">中止を確定する</button></p>' + msgHtml("cx_" + k) + '</div>' +
+        '<div class="mfoot"><button class="warn" data-a="cxgo" data-i="' + i + '">中止を確定する</button><button class="cancel" data-close="cx_' + k + '">やめる（中止しない）</button></div>' + msgHtml("cx_" + k) + '</div>' +
       '</div>';
   });
   $("home").innerHTML = h;
+  document.body.style.overflow = anyModal() ? "hidden" : "";
   $("login").style.display = "none"; $("home").style.display = "block";
   wire();
 }
@@ -204,7 +223,8 @@ function applicantsHtml(ev, i) {
 
 function wire() {
   $("out").onclick = function () { DATA = null; CODE = ""; COPY = null; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
-  $("setbtn").onclick = function () { OPEN.set = !OPEN.set; $("setpanel").style.display = disp("set"); };
+  $("setbtn").onclick = function () { OPEN.set = true; render(); };
+  document.querySelectorAll("[data-close]").forEach(function (b) { b.onclick = function () { closePanel(b.dataset.close); }; });
   $("s_save").onclick = saveSettings;
   const prev = function () {
     const n = $("s_note").value.trim();
@@ -212,15 +232,29 @@ function wire() {
       "\n詳細・お申し込みはこちら\n（リンク）\n\n配信の設定・停止はこちら\n（リンク）" + ($("s_flyer").checked ? "\n＋ チラシの画像" : "");
   };
   $("s_note").oninput = prev; $("s_flyer").onchange = prev; prev();
-  $("newbtn").onclick = function () { COPY = null; OPEN["new"] = !OPEN["new"]; render(); };
+  $("newbtn").onclick = function () { COPY = null; OPEN["new"] = true; render(); };
   $("n_save").onclick = createEvent;
   document.querySelectorAll("[data-a]").forEach(function (b) {
     b.onclick = function () { act(b.dataset.a, +b.dataset.i, b.dataset.j === undefined ? -1 : +b.dataset.j, b); };
   });
 }
 
+function anyModal() {
+  return Object.keys(OPEN).some(function (k) { return OPEN[k] && (k === "set" || k === "new" || /^(ed|cx)_/.test(k)); });
+}
+function closePanel(key) {
+  OPEN[key] = false; delete MSG[key];
+  if (key === "new") COPY = null;
+  render();
+}
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Escape" || !DATA || !anyModal()) return;
+  Object.keys(OPEN).forEach(function (k) { if (k === "set" || k === "new" || /^(ed|cx)_/.test(k)) OPEN[k] = false; });
+  COPY = null; render();
+});
+
 async function run(btn, key, fn) {
-  setMsg(key, "", ""); if (btn) btn.disabled = true;
+  setMsg("top", "", ""); setMsg(key, "", ""); if (btn) btn.disabled = true;
   try { return await fn(); }
   catch (e) { setMsg(key, "err", "通信に失敗しました。"); return null; }
   finally { if (btn) btn.disabled = false; }
@@ -230,21 +264,25 @@ async function act(a, i, j, btn) {
   const ev = DATA.events[i], k = ev.id;
   if (a === "ap") { toggle("ap_" + k); return; }
   if (a === "csv") { csv(i); return; }
-  if (a === "ed") { toggle("ed_" + k); return; }
-  if (a === "cx") { toggle("cx_" + k); return; }
+  if (a === "ed") { OPEN["ed_" + k] = true; render(); return; }
+  if (a === "cx") { OPEN["cx_" + k] = true; render(); return; }
+  if (a === "lnk") {
+    try { await navigator.clipboard.writeText(ev.link); setMsg("ev_" + k, "ok", "申込リンクをコピーしました。"); }
+    catch (e) { setMsg("ev_" + k, "err", "コピーできませんでした。リンクの欄を長押しして、コピーしてください。"); }
+    return;
+  }
   if (a === "copy") {
     COPY = Object.assign({}, ev.edit, { date: "", deadline: "" });
     OPEN["new"] = true; render();
-    $("p_new").scrollIntoView({ behavior: "smooth" });
     return;
   }
   if (a === "saveed") {
     await run(btn, "ed_" + k, async function () {
       const d = await post("org_event", Object.assign({ event_id: k }, readEv("e_" + k + "_")));
       if (!d.ok) { setMsg("ed_" + k, "err", errText(d)); return; }
-      OPEN["ed_" + k] = true;
+      OPEN["ed_" + k] = false;
       await reload();
-      setMsg("ed_" + k, "ok", d.republish ? "保存しました。事務局が確認したあとに、あらためて公開します。" : "保存しました。");
+      setMsg("ev_" + k, "ok", d.republish ? "修正を保存しました。事務局が確認したあとに、あらためて公開します。" : "修正を保存しました。");
     });
     return;
   }
@@ -290,9 +328,8 @@ async function createEvent() {
     if (!d.ok) { setMsg("new", "err", errText(d)); return; }
     COPY = null; OPEN["new"] = false;
     await reload();
-    setMsg("new", "ok", "登録しました（" + d.event_id + "）。事務局が確認してから、公開します。");
-    OPEN["new"] = true; $("p_new").style.display = "block";
-    const el = $("p_new"); Array.from(el.querySelectorAll("input,textarea")).forEach(function (x) { x.value = ""; });
+    setMsg("top", "ok", "イベントを登録しました（" + d.event_id + "）。事務局が確認してから、公開します。");
+    window.scrollTo(0, 0);
   });
 }
 
@@ -304,9 +341,9 @@ async function saveSettings() {
       notify_to: $("s_to").value, line: $("s_line").checked ? "1" : "0",
       flyer: $("s_flyer").checked ? "1" : "0", line_note: $("s_note").value });
     if (!d.ok) { setMsg("set", "err", errText(d)); return; }
-    OPEN.set = true;
+    OPEN.set = false;
     await reload();
-    setMsg("set", "ok", "設定を保存しました。");
+    setMsg("top", "ok", "設定を保存しました。");
   });
 }
 
