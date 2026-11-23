@@ -60,6 +60,28 @@
     <button type="submit" id="submitBtn" disabled>申し込む</button>
   </form>
   <p id="message"></p>
+  <p id="tosettingsrow" style="display:none;text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="tosettings">新着イベントの配信の設定・停止</a></p>
+
+  <div id="settings" style="display:none;">
+    <h2>新着イベントの配信設定</h2>
+    <p id="s_status" style="font-size:13px;color:#444;margin:0 0 12px;"></p>
+    <fieldset style="border:1px solid #ddd;border-radius:8px;margin:0 0 14px;padding:10px 12px;">
+      <legend style="font-size:13px;padding:0 4px;">受け取る範囲</legend>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;">
+        <input type="radio" name="smode" value="all" style="width:auto;margin-top:3px;"><span>すべての団体の新着イベントを受け取る</span>
+      </label>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;">
+        <input type="radio" name="smode" value="org" style="width:auto;margin-top:3px;"><span>選んだ団体の新着イベントだけ受け取る</span>
+      </label>
+      <div id="s_orgs" style="margin:0 0 10px 26px;font-size:14px;"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:0;">
+        <input type="radio" name="smode" value="off" style="width:auto;margin-top:3px;"><span>受け取らない（配信を停止する）</span>
+      </label>
+    </fieldset>
+    <button type="button" id="s_save">保存する</button>
+    <p id="s_msg" style="margin-top:12px;min-height:1.5em;font-size:14px;"></p>
+    <p id="s_back" style="display:none;text-align:center;font-size:13px;"><a href="#" id="s_backlink">イベントの申込に戻る</a></p>
+  </div>
 
   <script>
     // Make のWebhook URL（公開されても、LINEのIDトークン検証を通らない送信は受け付けません）
@@ -94,7 +116,12 @@
         ev = ev || inner.get("event_id") || "";
         og = og || inner.get("org_id") || "";
       }
-      return { eventId: ev, orgId: og };
+      let pg = params.get("page") || "";
+      if (!pg && state) {
+        const j = state.indexOf("?");
+        pg = new URLSearchParams(j >= 0 ? state.slice(j + 1) : state).get("page") || "";
+      }
+      return { eventId: ev, orgId: og, page: pg };
     }
 
     function show(text, kind) {
@@ -123,6 +150,10 @@
         const found = readEventParams();
         eventId = found.eventId;
         orgId = found.orgId;
+        if (found.page === "settings") {
+          openSettings(false);
+          return;
+        }
         if (!/^evt_\d+$/.test(eventId) || !/^org_\d+$/.test(orgId)) {
           show("イベントの指定が正しくありません。案内のリンクからもう一度開いてください。" +
                (DEBUG ? "（受信したURLの条件: " + (location.search || "なし") + "）" : ""), "error");
@@ -130,6 +161,7 @@
         }
 
         $("evtinfo").textContent = "イベントID: " + eventId;
+        $("tosettingsrow").style.display = "block";
 
         // イベントの内容を表示する（取得できなくても、申込自体はできる。サーバー側でも確認する）
         const closedForm = await loadEventInfo();
@@ -277,6 +309,94 @@
 
       submitting = false;
       $("submitBtn").disabled = false;
+    });
+
+    // ===== 配信の設定（受け取る範囲の変更・停止） =====
+    function sShow(text, kind) {
+      const el = $("s_msg");
+      el.textContent = text;
+      el.style.color = kind === "error" ? "#c00" : kind === "ok" ? "#067d34" : "#222";
+    }
+
+    async function settingsPost(fields) {
+      const body = new URLSearchParams(Object.assign({ id_token: idToken }, fields));
+      const res = await fetch(INFO_URL, { method: "POST", body: body });
+      return res.json();
+    }
+
+    function renderOrgBoxes(orgs) {
+      const box = $("s_orgs");
+      box.textContent = "";
+      if (!orgs.length) {
+        const t = document.createElement("div");
+        t.style.cssText = "font-size:12px;color:#666;";
+        t.textContent = "選べる団体は、イベントに申し込むと、ここに出ます。";
+        box.appendChild(t);
+        return;
+      }
+      orgs.forEach((o) => {
+        const lab = document.createElement("label");
+        lab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.value = o.id; cb.checked = !!o.selected; cb.style.cssText = "width:auto;margin-top:3px;";
+        const sp = document.createElement("span");
+        sp.textContent = o.name;
+        lab.appendChild(cb); lab.appendChild(sp);
+        box.appendChild(lab);
+      });
+    }
+
+    async function openSettings(fromEvent) {
+      $("form").style.display = "none";
+      $("evcard").style.display = "none";
+      $("evtinfo").style.display = "none";
+      $("tosettingsrow").style.display = "none";
+      $("message").textContent = "";
+      document.querySelector("h2").style.display = "none";
+      $("settings").style.display = "block";
+      $("s_back").style.display = fromEvent ? "block" : "none";
+      $("s_save").disabled = true;
+      sShow("読み込み中...");
+      try {
+        const d = await settingsPost({ action: "sub_get", org_id: orgId });
+        if (!d.ok) { sShow(d.error === "unauthorized" ? "ログインの有効期限が切れました。ミニアプリを開き直してください。" : "読み込めませんでした。", "error"); return; }
+        $("s_status").textContent = d.registered
+          ? "現在の設定：" + (d.mode === "all" ? "すべての団体の新着イベントを受け取る" : d.mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "受け取らない")
+          : "現在は、新着イベントの配信を希望していません。";
+        document.querySelector('input[name="smode"][value="' + d.mode + '"]').checked = true;
+        renderOrgBoxes(d.orgs);
+        sShow("");
+        $("s_save").disabled = false;
+      } catch (e) {
+        console.error(e);
+        sShow("通信に失敗しました。時間をおいて開き直してください。", "error");
+      }
+    }
+
+    $("tosettings").addEventListener("click", (e) => { e.preventDefault(); openSettings(true); });
+    $("s_backlink").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
+
+    $("s_save").addEventListener("click", async () => {
+      const mode = (document.querySelector('input[name="smode"]:checked') || {}).value;
+      if (!mode) { sShow("受け取る範囲を選んでください。", "error"); return; }
+      const ids = Array.from(document.querySelectorAll("#s_orgs input:checked")).map((c) => c.value);
+      if (mode === "org" && ids.length === 0) { sShow("団体を、1つ以上選んでください。", "error"); return; }
+      $("s_save").disabled = true;
+      sShow("保存中...");
+      try {
+        const d = await settingsPost({ action: "sub_set", mode: mode, org_ids: ids.join(",") });
+        if (d.ok) {
+          sShow("保存しました。", "ok");
+          $("s_status").textContent = "現在の設定：" + (mode === "all" ? "すべての団体の新着イベントを受け取る" : mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "受け取らない");
+          if (mode !== "off") { try { await liff.requestFriendship(); } catch (_) {} }
+        } else {
+          sShow(d.error === "unauthorized" ? "ログインの有効期限が切れました。ミニアプリを開き直してください。" : "保存できませんでした。時間をおいてもう一度お試しください。", "error");
+        }
+      } catch (e) {
+        console.error(e);
+        sShow("通信に失敗しました。", "error");
+      }
+      $("s_save").disabled = false;
     });
 
     $("consent").addEventListener("change", () => {

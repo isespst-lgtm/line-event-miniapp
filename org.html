@@ -97,6 +97,9 @@ function render() {
       '<div class="chk"><input type="checkbox" id="s_notify"' + (st.notify ? " checked" : "") + '><label for="s_notify">申込があったとき、メールで知らせる（氏名と人数だけをお知らせします）</label></div>' +
       '<label class="f">申込通知の送り先（空欄のときは、上のメールアドレス）</label><input type="email" id="s_to" maxlength="100" value="' + esc(st.notifyTo) + '">' +
       '<div class="chk"><input type="checkbox" id="s_line"' + (st.line ? " checked" : "") + '><label for="s_line">新しく公開されたイベントを、LINEで、配信を希望した方に案内する</label></div>' +
+      '<div class="chk"><input type="checkbox" id="s_flyer"' + (st.flyer ? " checked" : "") + '><label for="s_flyer">LINEの配信に、チラシの画像を付ける（画像を付けると、配信の通数が2倍になります）</label></div>' +
+      '<label class="f">LINEの配信に添える、ひとこと（80文字まで。URLやメールアドレスは入れられません）</label><input type="text" id="s_note" maxlength="80" value="' + esc(st.note) + '">' +
+      '<div class="muted" style="margin-top:8px">配信の見え方（例）</div><pre id="s_prev" style="background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;white-space:pre-wrap;margin:4px 0 0"></pre>' +
       '<p><button id="s_save">設定を保存</button></p><div id="s_msg"></div></div>' +
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
   if (!d.events.length) h += '<div class="card muted">まだ、イベントが登録されていません。</div>';
@@ -126,6 +129,12 @@ function render() {
   $("out").onclick = function () { DATA = null; CODE = ""; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
   $("setbtn").onclick = function () { const p = $("setpanel"); p.style.display = p.style.display === "block" ? "none" : "block"; };
   $("s_save").onclick = saveSettings;
+  const prev = function () {
+    const n = $("s_note").value.trim();
+    $("s_prev").textContent = "【新しいイベント】\n（イベント名）\n日時：2027/01/01 10:00-12:00\n場所：（会場名）\n" + (n ? "\n主催団体より：" + n + "\n" : "") +
+      "\n詳細・お申し込みはこちら\n（リンク）\n\n配信の設定・停止はこちら\n（リンク）" + ($("s_flyer").checked ? "\n＋ チラシの画像" : "");
+  };
+  $("s_note").oninput = prev; $("s_flyer").onchange = prev; prev();
   document.querySelectorAll("[data-t]").forEach(function (b) { b.onclick = function () { toggle(+b.dataset.t); }; });
   document.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { csv(+b.dataset.c); }; });
   document.querySelectorAll("[data-e]").forEach(function (b) { b.onclick = function () { const p = $("ed" + b.dataset.e); p.style.display = p.style.display === "block" ? "none" : "block"; }; });
@@ -138,7 +147,8 @@ async function saveSettings() {
   try {
     const d = await post("org_settings", {
       contact: $("s_contact").value, email: $("s_email").value, notify: $("s_notify").checked ? "1" : "0",
-      notify_to: $("s_to").value, line: $("s_line").checked ? "1" : "0" });
+      notify_to: $("s_to").value, line: $("s_line").checked ? "1" : "0",
+      flyer: $("s_flyer").checked ? "1" : "0", line_note: $("s_note").value });
     if (!d.ok) { msg.className = "err"; msg.textContent = errText(d); return; }
     await reload("s_msg", "設定を保存しました。");
     $("setpanel").style.display = "block";
