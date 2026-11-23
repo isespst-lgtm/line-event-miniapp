@@ -10,10 +10,15 @@
   header { background: #2e7d5b; color: #fff; padding: 14px 16px; font-size: 18px; font-weight: bold; }
   main { max-width: 760px; margin: 0 auto; padding: 16px; }
   .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  input[type=password], input[type=text] { width: 100%; box-sizing: border-box; padding: 10px; font-size: 16px; border: 1px solid #bbb; border-radius: 6px; }
+  input[type=password], input[type=text], input[type=email], input[type=date], input[type=number], textarea {
+    width: 100%; box-sizing: border-box; padding: 9px; font-size: 16px; border: 1px solid #bbb; border-radius: 6px; font-family: inherit; }
+  textarea { min-height: 110px; }
+  label.f { display: block; font-size: 13px; color: #444; margin: 10px 0 2px; }
   button { background: #2e7d5b; color: #fff; border: 0; border-radius: 6px; padding: 10px 16px; font-size: 15px; cursor: pointer; }
   button.sub { background: #fff; color: #2e7d5b; border: 1px solid #2e7d5b; }
+  button:disabled { opacity: .5; }
   .err { color: #b00020; margin-top: 8px; }
+  .ok { color: #1b5e20; margin-top: 8px; }
   .muted { color: #666; font-size: 13px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e0e0e0; }
@@ -21,7 +26,10 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
   th, td { border-bottom: 1px solid #eee; padding: 6px 4px; text-align: left; vertical-align: top; word-break: break-all; }
   .scroll { overflow-x: auto; }
-  .notice { font-size: 12px; color: #8a4b00; background: #fff6e5; border-radius: 6px; padding: 8px; margin-top: 10px; }
+  .notice { font-size: 12px; color: #8a4b00; background: #fff6e5; border-radius: 6px; padding: 8px; margin-top: 10px; line-height: 1.6; }
+  .chk { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 2px; font-size: 14px; }
+  .chk input { margin-top: 3px; }
+  .panel { border-top: 1px solid #eee; margin-top: 12px; padding-top: 4px; }
 </style>
 </head>
 <body>
@@ -42,54 +50,121 @@ const $ = function (id) { return document.getElementById(id); };
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
 
 let DATA = null;
+let CODE = ""; // 画面を閉じるまで、メモリの中だけに置く（保存しない）
+const FIELD_ERR = { busy: "しばらくしてから、もう一度お試しください。", unauthorized: "登録コードが違います。", not_found: "イベントが見つかりません。",
+  server_error: "処理できませんでした。時間をおいて、もう一度お試しください。" };
 
-async function load(code) {
-  const body = new URLSearchParams({ action: "org_home", code: code });
+async function post(action, fields) {
+  const body = new URLSearchParams(Object.assign({ action: action, code: CODE }, fields || {}));
   const res = await fetch(API_URL, { method: "POST", body: body });
   return res.json();
 }
+function errText(d) {
+  if (d.error === "invalid" && d.field) return "「" + d.field + "」の入力を、ご確認ください。";
+  if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
+  return FIELD_ERR[d.error] || "処理できませんでした。";
+}
 
 $("go").onclick = async function () {
-  const code = $("code").value.trim();
+  CODE = $("code").value.trim();
   $("err").textContent = "";
-  if (!code) { $("err").textContent = "登録コードを入力してください"; return; }
+  if (!CODE) { $("err").textContent = "登録コードを入力してください"; return; }
   $("go").disabled = true;
   try {
-    const d = await load(code);
-    if (!d.ok) {
-      $("err").textContent = d.error === "unauthorized" ? "登録コードが違います。もう一度ご確認ください。"
-        : d.error === "busy" ? "しばらくしてから、もう一度お試しください。" : "表示できませんでした。";
-      return;
-    }
+    const d = await post("org_home");
+    if (!d.ok) { $("err").textContent = errText(d); CODE = ""; return; }
     DATA = d; $("code").value = "";
     render();
   } catch (e) {
-    $("err").textContent = "通信に失敗しました。もう一度お試しください。";
+    CODE = ""; $("err").textContent = "通信に失敗しました。もう一度お試しください。";
   } finally { $("go").disabled = false; }
 };
+
+async function reload(msgId, msg) {
+  const d = await post("org_home");
+  if (d.ok) { DATA = d; render(); if (msgId) { const el = $(msgId); if (el) { el.className = "ok"; el.textContent = msg; } } }
+}
 
 function statusTag(s) { return '<span class="tag ' + (s === "公開" ? "pub" : s === "確認待ち" ? "wait" : "") + '">' + esc(s || "-") + "</span>"; }
 
 function render() {
-  const d = DATA;
+  const d = DATA, st = d.settings;
   let h = '<div class="card"><div class="row"><div><b>' + esc(d.org.name) + '</b><div class="muted">' + esc(d.org.id) +
-    "｜担当：" + esc(d.org.contact) + "｜" + esc(d.org.email) + '</div></div><button class="sub" id="out">閉じる</button></div>' +
+    "｜担当：" + esc(d.org.contact) + "｜" + esc(d.org.email) + '</div></div><div><button class="sub" id="setbtn">設定</button> <button class="sub" id="out">閉じる</button></div></div>' +
+    '<div id="setpanel" class="panel" style="display:none">' +
+      '<label class="f">担当者のお名前</label><input type="text" id="s_contact" maxlength="50" value="' + esc(d.org.contact) + '">' +
+      '<label class="f">担当者のメールアドレス（登録コードなどのご連絡先）</label><input type="email" id="s_email" maxlength="100" value="' + esc(d.org.email) + '">' +
+      '<div class="chk"><input type="checkbox" id="s_notify"' + (st.notify ? " checked" : "") + '><label for="s_notify">申込があったとき、メールで知らせる（氏名と人数だけをお知らせします）</label></div>' +
+      '<label class="f">申込通知の送り先（空欄のときは、上のメールアドレス）</label><input type="email" id="s_to" maxlength="100" value="' + esc(st.notifyTo) + '">' +
+      '<div class="chk"><input type="checkbox" id="s_line"' + (st.line ? " checked" : "") + '><label for="s_line">新しく公開されたイベントを、LINEで、配信を希望した方に案内する</label></div>' +
+      '<p><button id="s_save">設定を保存</button></p><div id="s_msg"></div></div>' +
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
   if (!d.events.length) h += '<div class="card muted">まだ、イベントが登録されていません。</div>';
   d.events.forEach(function (ev, i) {
     const act = ev.applicants.filter(function (a) { return a.status === "申込済"; });
+    const e = ev.edit;
     h += '<div class="card"><div class="row"><b>' + esc(ev.title) + "</b>" + statusTag(ev.status) + "</div>" +
       '<div class="muted">' + esc(ev.id) + "｜" + esc(ev.date) + " " + esc(ev.time) + "｜" + esc(ev.place) + "</div>" +
       "<p>申込：<b>" + ev.used + "名</b>（" + act.length + "件）" + (ev.capacity ? " ／ 定員 " + ev.capacity + "名・残り " + ev.remaining + "名" : "") +
       (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + "</p>" +
-      '<button class="sub" data-t="' + i + '">申込者を見る</button> <button class="sub" data-c="' + i + '">CSVで保存</button>' +
-      '<div id="ap' + i + '" class="scroll" style="display:none"></div></div>';
+      '<button class="sub" data-t="' + i + '">申込者を見る</button> <button class="sub" data-c="' + i + '">CSVで保存</button> <button class="sub" data-e="' + i + '">内容を修正</button>' +
+      '<div id="ap' + i + '" class="scroll" style="display:none"></div>' +
+      '<div id="ed' + i + '" class="panel" style="display:none">' +
+        '<div class="notice">イベント名・日時・場所・詳細・チラシを変えると、公開中のイベントは、事務局が確認するまで、いったん非公開（確認待ち）になり、新しい申込ができなくなります。定員と締切の変更だけなら、すぐに反映されます。すでに申し込まれた方への連絡は、団体で行ってください。</div>' +
+        '<label class="f">イベント名</label><input type="text" id="e_title' + i + '" maxlength="100" value="' + esc(e.title) + '">' +
+        '<label class="f">開催日</label><input type="date" id="e_date' + i + '" value="' + esc(e.date) + '">' +
+        '<label class="f">開催時間</label><input type="text" id="e_time' + i + '" maxlength="30" value="' + esc(e.time) + '">' +
+        '<label class="f">場所</label><input type="text" id="e_place' + i + '" maxlength="100" value="' + esc(e.place) + '">' +
+        '<label class="f">定員（人）</label><input type="number" id="e_cap' + i + '" min="1" max="1000" value="' + esc(e.capacity) + '">' +
+        '<label class="f">申込締切（空欄で締切なし）</label><input type="date" id="e_dl' + i + '" value="' + esc(e.deadline) + '">' +
+        '<label class="f">詳細</label><textarea id="e_detail' + i + '" maxlength="2000">' + esc(e.detail) + '</textarea>' +
+        '<label class="f">チラシ画像のURL（https:// で始まるもの。空欄でも構いません）</label><input type="text" id="e_flyer' + i + '" maxlength="500" value="' + esc(e.flyer) + '">' +
+        '<p><button data-s="' + i + '">修正を保存</button></p><div id="e_msg' + i + '"></div></div></div>';
   });
   $("home").innerHTML = h;
   $("login").style.display = "none"; $("home").style.display = "block";
-  $("out").onclick = function () { DATA = null; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
+  $("out").onclick = function () { DATA = null; CODE = ""; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
+  $("setbtn").onclick = function () { const p = $("setpanel"); p.style.display = p.style.display === "block" ? "none" : "block"; };
+  $("s_save").onclick = saveSettings;
   document.querySelectorAll("[data-t]").forEach(function (b) { b.onclick = function () { toggle(+b.dataset.t); }; });
   document.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { csv(+b.dataset.c); }; });
+  document.querySelectorAll("[data-e]").forEach(function (b) { b.onclick = function () { const p = $("ed" + b.dataset.e); p.style.display = p.style.display === "block" ? "none" : "block"; }; });
+  document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () { saveEvent(+b.dataset.s, b); }; });
+}
+
+async function saveSettings() {
+  const btn = $("s_save"), msg = $("s_msg");
+  msg.className = ""; msg.textContent = ""; btn.disabled = true;
+  try {
+    const d = await post("org_settings", {
+      contact: $("s_contact").value, email: $("s_email").value, notify: $("s_notify").checked ? "1" : "0",
+      notify_to: $("s_to").value, line: $("s_line").checked ? "1" : "0" });
+    if (!d.ok) { msg.className = "err"; msg.textContent = errText(d); return; }
+    await reload("s_msg", "設定を保存しました。");
+    $("setpanel").style.display = "block";
+    const m = $("s_msg"); if (m) { m.className = "ok"; m.textContent = "設定を保存しました。"; }
+  } catch (e) { msg.className = "err"; msg.textContent = "通信に失敗しました。"; }
+  finally { btn.disabled = false; }
+}
+
+async function saveEvent(i, btn) {
+  const msg = $("e_msg" + i);
+  msg.className = ""; msg.textContent = ""; btn.disabled = true;
+  const id = DATA.events[i].id;
+  try {
+    const d = await post("org_event", {
+      event_id: id, title: $("e_title" + i).value, date: $("e_date" + i).value, time: $("e_time" + i).value, place: $("e_place" + i).value,
+      capacity: $("e_cap" + i).value, deadline: $("e_dl" + i).value, detail: $("e_detail" + i).value, flyer: $("e_flyer" + i).value });
+    if (!d.ok) { msg.className = "err"; msg.textContent = errText(d); return; }
+    await reload(null);
+    const j = DATA.events.findIndex(function (x) { return x.id === id; });
+    if (j >= 0) {
+      $("ed" + j).style.display = "block";
+      const m = $("e_msg" + j); m.className = "ok";
+      m.textContent = d.republish ? "保存しました。事務局が確認したあとに、あらためて公開します。" : "保存しました。";
+    }
+  } catch (e) { msg.className = "err"; msg.textContent = "通信に失敗しました。"; }
+  finally { btn.disabled = false; }
 }
 
 function toggle(i) {
