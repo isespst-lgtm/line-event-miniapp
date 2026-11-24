@@ -87,6 +87,7 @@ async function post(action, fields) {
 }
 function errText(d) {
   if (d.error === "invalid" && d.field) return "「" + d.field + "」の入力を、ご確認ください。";
+  if (d.error === "flyer_bad" && d.reason) return d.reason;
   if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
   if (d.error === "full") return "定員を超えるため、戻せません（空きは " + (d.remaining || 0) + " 名です）。";
   if (d.error === "invalid") return "処理できませんでした（入力内容、または、サーバー側の更新が反映されていない可能性があります）。改善しないときは、事務局へご連絡ください。";
@@ -135,7 +136,19 @@ function evFields(px, e) {
     '<label class="f">定員（人）</label><input type="number" id="' + px + 'cap" min="1" max="1000" value="' + esc(e.capacity) + '">' +
     '<label class="f">申込締切（空欄で締切なし）</label><input type="date" id="' + px + 'dl" value="' + esc(e.deadline) + '">' +
     '<label class="f">詳細</label><textarea id="' + px + 'detail" maxlength="2000">' + esc(e.detail) + '</textarea>' +
-    '<label class="f">チラシ画像のURL（https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'flyer" maxlength="500" value="' + esc(e.flyer) + '">';
+    '<label class="f">チラシ画像のURL（https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'flyer" maxlength="500" value="' + esc(e.flyer) + '" onchange="checkFlyerInput(this)">' +
+    '<div class="muted">使える画像：JPEGまたはPNG。Googleドライブの画像は、共有を「リンクを知っている全員」にしてください。PDFは使えません。</div>';
+}
+// チラシのURLを入れたときに、LINEで使えなさそうなら、すぐに知らせる（登録のときにも、あらためて確認します）
+function checkFlyerInput(el) {
+  const v = el.value.trim();
+  if (!v) return;
+  if (!/^https:\/\//.test(v)) { alert("チラシ画像のURLは、https:// で始まるものを入れてください。\n\n画像（JPEGまたはPNG）を、Googleドライブに入れて、共有を「リンクを知っている全員」にして、そのリンクを貼ってください。"); return; }
+  if (/\.(pdf|gif|heic|webp|bmp|tiff?)(\?|#|$)/i.test(v)) { alert("チラシは、JPEGまたはPNGの画像だけ、LINEで使えます。\nPDFやGIFなどは、使えません。画像を、JPEGかPNGにして、用意してください。"); return; }
+  const m = v.match(/drive\.google\.com\/file\/d\/([\w-]+)/) || v.match(/drive\.google\.com\/.*[?&]id=([\w-]+)/);
+  const img = new Image();
+  img.onerror = function () { alert("この画像を、読み込めませんでした。\n\n・Googleドライブの共有が「制限付き」になっていませんか？（「リンクを知っている全員」にしてください）\n・JPEGまたはPNGの画像ですか？（PDFなどは使えません）\n・URLは、正しいですか？\n\nこのまま登録しても、画像が使えないときは、登録のときに、お知らせします。"); };
+  img.src = m ? "https://lh3.googleusercontent.com/d/" + m[1] + "=w300" : v;
 }
 function readEv(px) {
   return { title: $(px + "title").value, date: $(px + "date").value, time: $(px + "time").value, place: $(px + "place").value,
