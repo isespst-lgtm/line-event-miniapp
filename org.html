@@ -89,6 +89,8 @@ async function post(action, fields) {
 function errText(d) {
   if (d.error === "invalid" && d.field) return "「" + d.field + "」の入力を、ご確認ください。";
   if (d.error === "flyer_bad" && d.reason) return d.reason;
+  if (d.error === "expired") return "ご契約の期間が終了しています。新しいイベントを登録するには、契約の更新が必要です。事務局（urata@e-ise.net）へご連絡ください。";
+  if (d.error === "plan_limit") return "ご契約の投稿数（" + d.limit + "回）に、達しています。続けて登録するには、契約の更新・変更が必要です。事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "limit_reached") return "今月に登録できるイベントの数（" + d.limit + "件）に、達しています。増やしたいときは、事務局へご連絡ください。";
   if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
   if (d.error === "full") return "定員を超えるため、戻せません（空きは " + (d.remaining || 0) + " 名です）。";
@@ -178,10 +180,11 @@ function render() {
       '<div class="chk"><input type="checkbox" id="s_notify"' + (st.notify ? " checked" : "") + '><label for="s_notify">申込があったとき、メールで知らせる（氏名と人数だけをお知らせします）</label></div>' +
       '<label class="f">申込通知の送り先（空欄のときは、上のメールアドレス）</label><input type="email" id="s_to" maxlength="100" value="' + esc(st.notifyTo) + '">' +
       '<div class="chk"><input type="checkbox" id="s_line"' + (st.line ? " checked" : "") + '><label for="s_line">新しく公開されたイベントを、LINEで、配信を希望した方に案内する</label></div>' +
-      '<div class="chk"><input type="checkbox" id="s_flyer"' + (st.flyer ? " checked" : "") + '><label for="s_flyer">LINEの配信に、チラシの画像を付ける（画像を付けると、配信の通数が2倍になります）</label></div>' +
+      '<div class="chk"><input type="checkbox" id="s_flyer"' + (st.flyer ? " checked" : "") + '><label for="s_flyer">LINEの配信に、チラシの画像を付ける（画像を付けても、配信の通数は増えません）</label></div>' +
       '<label class="f">LINEの配信に添える、ひとこと（80文字まで。URLやメールアドレスは入れられません）</label><input type="text" id="s_note" maxlength="80" value="' + esc(st.note) + '">' +
       '<div class="muted" style="margin-top:8px">配信の見え方（例）</div><pre id="s_prev" style="background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;white-space:pre-wrap;margin:4px 0 0"></pre>' +
       '<div class="mfoot"><button id="s_save">設定を保存</button><button class="cancel" data-close="set">取り消し（閉じる）</button></div>' + msgHtml("set") + '</div>' +
+    contractHtml(d) +
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
 
   // 新しいイベントの登録
@@ -202,7 +205,7 @@ function render() {
     h += '<div class="card"><div class="row"><b>' + esc(ev.title) + "</b>" + statusTag(ev.status) + "</div>" +
       '<div class="muted">' + esc(ev.id) + "｜" + esc(ev.date) + " " + esc(ev.time) + "｜" + esc(ev.place) + "</div>" +
       "<p>申込：<b>" + ev.used + "名</b>（" + act.length + "件）" + (ev.capacity ? " ／ 定員 " + ev.capacity + "名・残り " + ev.remaining + "名" : "") +
-      (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + "</p>" +
+      (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + (ev.line_sent ? " ／ LINE配信 " + ev.line_sent + "通" : "") + "</p>" +
       (ev.status === "公開" && ev.link ? '<div class="linkrow"><span>申込リンク</span><input type="text" readonly value="' + esc(ev.link) + '" onclick="this.select()"><button class="sub mini" data-a="lnk" data-i="' + i + '">コピー</button></div>' : "") +
       '<div class="btns">' +
       '<button class="sub" data-a="ap" data-i="' + i + '">申込者を見る</button> <button class="sub" data-a="csv" data-i="' + i + '">CSVで保存</button> ' +
@@ -230,6 +233,20 @@ function render() {
   document.body.style.overflow = anyModal() ? "hidden" : "";
   $("login").style.display = "none"; $("home").style.display = "block";
   wire();
+}
+
+// ご契約の状況と、LINEに送った通数
+function contractHtml(d) {
+  const c = d.contract || {}, l = d.line || { month: 0, last: 0, total: 0 };
+  let t = "";
+  if (c.plan) {
+    t += "<div>ご契約：<b>" + esc(c.plan) + "</b>" + (c.status && c.status !== c.plan + "中" ? "（" + esc(c.status) + "）" : "") +
+      (c.end ? "｜" + esc(c.start) + " 〜 " + esc(c.end) : "") +
+      (c.post_left !== null ? "｜投稿の残り <b>" + c.post_left + "</b> 回（" + c.post_limit + "回まで）" : (c.plan ? "｜投稿の回数制限なし" : "")) + "</div>";
+  }
+  t += "<div>LINEに送った通数：今月 <b>" + l.month + "</b> 通｜先月 " + l.last + " 通｜これまで " + l.total + " 通</div>" +
+    '<div class="muted">通数は、LINEの配信で、お知らせを届けた人数（新着の配信、中止・キャンセルの連絡）の合計です。記録を始めた日より前の分は、含まれません。</div>';
+  return '<div class="notice" style="background:#f4f8f4">' + t + "</div>";
 }
 
 function applicantsHtml(ev, i) {

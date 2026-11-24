@@ -66,7 +66,14 @@
     <button type="submit" id="submitBtn" disabled>申し込む</button>
   </form>
   <p id="message"></p>
-  <p id="tosettingsrow" style="display:none;text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="tosettings">新着イベントの配信の設定・停止</a></p>
+  <p id="tosettingsrow" style="display:none;text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="tolist">公開中のイベント一覧</a>　｜　<a href="#" id="tosettings">新着イベントの配信の設定・停止</a></p>
+
+  <div id="evlist" style="display:none;">
+    <h2>公開中のイベント</h2>
+    <p id="evlistmsg" style="font-size:14px;color:#444;"></p>
+    <div id="evlistbody"></div>
+    <p style="text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="evlist_settings">新着イベントの配信の設定・停止</a></p>
+  </div>
 
   <div id="settings" style="display:none;">
     <h2>新着イベントの配信設定</h2>
@@ -158,6 +165,10 @@
         orgId = found.orgId;
         if (found.page === "settings") {
           openSettings(false);
+          return;
+        }
+        if (found.page === "events") {
+          openEventList();
           return;
         }
         if (!/^evt_\d+$/.test(eventId) || !/^org_\d+$/.test(orgId)) {
@@ -360,6 +371,51 @@
       });
     }
 
+    // 公開中のイベント一覧（リッチメニューから開く: ...?page=events）
+    async function openEventList() {
+      $("form").style.display = "none";
+      $("evcard").style.display = "none";
+      $("evtinfo").style.display = "none";
+      $("tosettingsrow").style.display = "none";
+      $("message").textContent = "";
+      document.querySelector("h2").style.display = "none";
+      $("evlist").style.display = "block";
+      $("evlistmsg").textContent = "読み込み中...";
+      try {
+        const res = await fetch(INFO_URL + "?list=1");
+        const d = await res.json();
+        if (!d.ok) { $("evlistmsg").textContent = "読み込めませんでした。時間をおいて、開き直してください。"; return; }
+        if (!d.events.length) { $("evlistmsg").textContent = "いま、公開中のイベントはありません。"; return; }
+        $("evlistmsg").textContent = "気になるイベントを選ぶと、くわしい内容と、お申し込みの画面が開きます。";
+        const body = $("evlistbody");
+        body.textContent = "";
+        d.events.forEach((ev) => {
+          const a = document.createElement("a");
+          a.href = "#";
+          a.style.cssText = "display:block;border:1px solid #ddd;border-radius:10px;padding:12px;margin:0 0 10px;text-decoration:none;color:inherit;";
+          const t = document.createElement("div");
+          t.style.cssText = "font-size:16px;font-weight:bold;margin:0 0 6px;";
+          t.textContent = ev.title;
+          const m = document.createElement("div");
+          m.style.cssText = "font-size:13px;line-height:1.6;color:#444;";
+          const lines = ["日時：" + ev.date.replace(/-/g, "/") + (ev.time ? " " + ev.time : ""), "場所：" + ev.place, "主催：" + ev.org_name];
+          if (ev.state === "full") lines.push("定員に達しました");
+          else if (ev.remaining !== null) lines.push("残り " + ev.remaining + "名");
+          m.textContent = lines.join("\n");
+          m.style.whiteSpace = "pre-line";
+          a.appendChild(t); a.appendChild(m);
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            location.search = "?event_id=" + encodeURIComponent(ev.id) + "&org_id=" + encodeURIComponent(ev.org_id);
+          });
+          body.appendChild(a);
+        });
+      } catch (e) {
+        console.error(e);
+        $("evlistmsg").textContent = "読み込めませんでした。時間をおいて、開き直してください。";
+      }
+    }
+
     async function openSettings(fromEvent) {
       $("form").style.display = "none";
       $("evcard").style.display = "none";
@@ -388,6 +444,8 @@
     }
 
     $("tosettings").addEventListener("click", (e) => { e.preventDefault(); openSettings(true); });
+    $("tolist").addEventListener("click", (e) => { e.preventDefault(); location.search = "?page=events"; });
+    $("evlist_settings").addEventListener("click", (e) => { e.preventDefault(); $("evlist").style.display = "none"; openSettings(false); });
     $("s_backlink").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
 
     $("s_save").addEventListener("click", async () => {
