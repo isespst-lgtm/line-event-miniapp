@@ -139,7 +139,9 @@ function evFields(px, e) {
     '<label class="f">申込締切（空欄で締切なし）</label><input type="date" id="' + px + 'dl" value="' + esc(e.deadline) + '">' +
     '<label class="f">詳細</label><textarea id="' + px + 'detail" maxlength="2000">' + esc(e.detail) + '</textarea>' +
     '<label class="f">チラシ画像のURL（https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'flyer" maxlength="500" value="' + esc(e.flyer) + '" onchange="checkFlyerInput(this)">' +
-    '<div class="muted">使える画像：JPEGまたはPNG。Googleドライブの画像は、共有を「リンクを知っている全員」にしてください。PDFは使えません。</div>';
+    '<div class="muted">使える画像：JPEGまたはPNG。Googleドライブの画像は、共有を「リンクを知っている全員」にしてください。PDFや動画は、ここには入れられません。</div>' +
+    '<label class="f">動画のURL（YouTubeなど。https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'video" maxlength="500" value="' + esc(e.video) + '" onchange="checkVideoInput(this)">' +
+    '<div class="muted">申込ページに動画が表示され、LINEのお知らせに「動画を見る」ボタンが付きます。YouTubeは「限定公開」か「公開」にしてください。</div>';
 }
 // チラシのURLを入れたときに、LINEで使えなさそうなら、すぐに知らせる（登録のときにも、あらためて確認します）
 function checkFlyerInput(el) {
@@ -152,9 +154,16 @@ function checkFlyerInput(el) {
   img.onerror = function () { alert("この画像を、読み込めませんでした。\n\n・Googleドライブの共有が「制限付き」になっていませんか？（「リンクを知っている全員」にしてください）\n・JPEGまたはPNGの画像ですか？（PDFなどは使えません）\n・URLは、正しいですか？\n\nこのまま登録しても、画像が使えないときは、登録のときに、お知らせします。"); };
   img.src = m ? "https://lh3.googleusercontent.com/d/" + m[1] + "=w300" : v;
 }
+// 動画のURLを入れたときに、おかしければ、すぐに知らせる
+function checkVideoInput(el) {
+  const v = el.value.trim();
+  if (!v) return;
+  if (!/^https:\/\/\S+$/.test(v)) { alert("動画のURLは、https:// で始まるものを、入れてください。"); return; }
+  if (/\.(jpe?g|png|gif)(\?|#|$)/i.test(v)) { alert("これは画像のURLのようです。画像は「チラシ画像のURL」の欄に入れてください。"); }
+}
 function readEv(px) {
   return { title: $(px + "title").value, date: $(px + "date").value, time: $(px + "time").value, place: $(px + "place").value,
-    capacity: $(px + "cap").value, deadline: $(px + "dl").value, detail: $(px + "detail").value, flyer: $(px + "flyer").value };
+    capacity: $(px + "cap").value, deadline: $(px + "dl").value, detail: $(px + "detail").value, flyer: $(px + "flyer").value, video: $(px + "video").value };
 }
 
 function render() {
@@ -176,7 +185,7 @@ function render() {
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
 
   // 新しいイベントの登録
-  const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "" };
+  const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "" };
   h += '<div class="card"><div class="row"><b>イベントを登録する</b><button id="newbtn">新しいイベントを登録</button></div>' +
     '<div id="p_new" class="panel modal new" style="display:' + disp("new") + '">' +
     '<div class="mhead"><span>' + (COPY ? "イベントをコピーして登録" : "新しいイベントを登録") + '</span><button data-close="new">× 閉じる</button></div>' +
