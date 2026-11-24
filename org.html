@@ -77,7 +77,8 @@ const ERR = {
   state: "いまの状態では、この操作はできません。画面を開き直してください。",
   cancelled: "中止したイベントは、修正できません。",
   too_many_pending: "事務局の確認待ちのイベントが、多くなっています。確認が済むまで、お待ちください。",
-  duplicate: "同じLINEアカウントの申込がすでにあるため、戻せません。"
+  duplicate: "同じLINEアカウントの申込がすでにあるため、戻せません。",
+  suspended: "この団体の利用は、現在、停止されています。事務局（urata@e-ise.net）へご連絡ください。"
 };
 
 async function post(action, fields) {
@@ -88,6 +89,7 @@ async function post(action, fields) {
 function errText(d) {
   if (d.error === "invalid" && d.field) return "「" + d.field + "」の入力を、ご確認ください。";
   if (d.error === "flyer_bad" && d.reason) return d.reason;
+  if (d.error === "limit_reached") return "今月に登録できるイベントの数（" + d.limit + "件）に、達しています。増やしたいときは、事務局へご連絡ください。";
   if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
   if (d.error === "full") return "定員を超えるため、戻せません（空きは " + (d.remaining || 0) + " 名です）。";
   if (d.error === "invalid") return "処理できませんでした（入力内容、または、サーバー側の更新が反映されていない可能性があります）。改善しないときは、事務局へご連絡ください。";
@@ -341,7 +343,7 @@ async function createEvent() {
     if (!d.ok) { setMsg("new", "err", errText(d)); return; }
     COPY = null; OPEN["new"] = false;
     await reload();
-    setMsg("top", "ok", "イベントを登録しました（" + d.event_id + "）。事務局が確認してから、公開します。");
+    setMsg("top", "ok", "イベントを登録しました（" + d.event_id + "）。" + (d.published ? "すぐに公開されました。申込リンクを、メールでお送りします。" : "事務局が確認してから、公開します。"));
     window.scrollTo(0, 0);
   });
 }
