@@ -89,6 +89,7 @@ async function post(action, fields) {
 function errText(d) {
   if (d.error === "invalid" && d.field) return "「" + d.field + "」の入力を、ご確認ください。";
   if (d.error === "flyer_bad" && d.reason) return d.reason;
+  if (d.error === "too_soon") return "開催日は、登録する日から " + d.days + " 日以上あとにしてください（LINEの新着配信は、毎週 火曜・金曜に、まとめて送るため、余裕をもって登録してください）。";
   if (d.error === "expired") return "ご契約の期間が終了しています。新しいイベントを登録するには、契約の更新が必要です。事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "plan_limit") return "ご契約の投稿数（" + d.limit + "回）に、達しています。続けて登録するには、契約の更新・変更が必要です。事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "limit_reached") return "今月に登録できるイベントの数（" + d.limit + "件）に、達しています。増やしたいときは、事務局へご連絡ください。";
@@ -179,10 +180,11 @@ function render() {
       '<label class="f">担当者のメールアドレス（登録コードなどのご連絡先）</label><input type="email" id="s_email" maxlength="100" value="' + esc(d.org.email) + '">' +
       '<div class="chk"><input type="checkbox" id="s_notify"' + (st.notify ? " checked" : "") + '><label for="s_notify">申込があったとき、メールで知らせる（氏名と人数だけをお知らせします）</label></div>' +
       '<label class="f">申込通知の送り先（空欄のときは、上のメールアドレス）</label><input type="email" id="s_to" maxlength="100" value="' + esc(st.notifyTo) + '">' +
-      '<div class="chk"><input type="checkbox" id="s_line"' + (st.line ? " checked" : "") + '><label for="s_line">新しく公開されたイベントを、LINEで、配信を希望した方に案内する</label></div>' +
+      '<div class="chk"><input type="checkbox" id="s_line"' + (st.line ? " checked" : "") + '><label for="s_line">新しく公開されたイベントを、LINEで、配信を希望した方に案内する（毎週 火曜・金曜に、まとめて配信します）</label></div>' +
       '<div class="chk"><input type="checkbox" id="s_flyer"' + (st.flyer ? " checked" : "") + '><label for="s_flyer">LINEの配信に、チラシの画像を付ける（画像を付けても、配信の通数は増えません）</label></div>' +
       '<label class="f">LINEの配信に添える、ひとこと（80文字まで。URLやメールアドレスは入れられません）</label><input type="text" id="s_note" maxlength="80" value="' + esc(st.note) + '">' +
-      '<div class="muted" style="margin-top:8px">配信の見え方（例）</div><pre id="s_prev" style="background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;white-space:pre-wrap;margin:4px 0 0"></pre>' +
+      '<div class="notice" style="background:#f4f8f4;margin-top:10px">' + lineStatsHtml(d) + '</div>' +
+      '<div class="muted" style="margin-top:8px">配信の見え方（例）</div><pre id="s_prev" data-org="' + esc(d.org.name) + '" style="background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;white-space:pre-wrap;margin:4px 0 0"></pre>' +
       '<div class="mfoot"><button id="s_save">設定を保存</button><button class="cancel" data-close="set">取り消し（閉じる）</button></div>' + msgHtml("set") + '</div>' +
     contractHtml(d) +
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
@@ -205,7 +207,8 @@ function render() {
     h += '<div class="card"><div class="row"><b>' + esc(ev.title) + "</b>" + statusTag(ev.status) + "</div>" +
       '<div class="muted">' + esc(ev.id) + "｜" + esc(ev.date) + " " + esc(ev.time) + "｜" + esc(ev.place) + "</div>" +
       "<p>申込：<b>" + ev.used + "名</b>（" + act.length + "件）" + (ev.capacity ? " ／ 定員 " + ev.capacity + "名・残り " + ev.remaining + "名" : "") +
-      (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + (ev.line_sent ? " ／ LINE配信 " + ev.line_sent + "通" : "") + "</p>" +
+      (ev.deadline ? " ／ 締切 " + esc(ev.deadline) : "") + (ev.line_sent ? " ／ LINEに届けた通数 " + ev.line_sent + "通" : "") + "</p>" +
+      (ev.line_status ? '<div class="muted">' + esc(ev.line_status) + "</div>" : "") +
       (ev.status === "公開" && ev.link ? '<div class="linkrow"><span>申込リンク</span><input type="text" readonly value="' + esc(ev.link) + '" onclick="this.select()"><button class="sub mini" data-a="lnk" data-i="' + i + '">コピー</button></div>' : "") +
       '<div class="btns">' +
       '<button class="sub" data-a="ap" data-i="' + i + '">申込者を見る</button> <button class="sub" data-a="csv" data-i="' + i + '">CSVで保存</button> ' +
@@ -244,9 +247,21 @@ function contractHtml(d) {
       (c.end ? "｜" + esc(c.start) + " 〜 " + esc(c.end) : "") +
       (c.post_left !== null ? "｜投稿の残り <b>" + c.post_left + "</b> 回（" + c.post_limit + "回まで）" : (c.plan ? "｜投稿の回数制限なし" : "")) + "</div>";
   }
-  t += "<div>LINEに送った通数：今月 <b>" + l.month + "</b> 通｜先月 " + l.last + " 通｜これまで " + l.total + " 通</div>" +
-    '<div class="muted">通数は、LINEの配信で、お知らせを届けた人数（新着の配信、中止・キャンセルの連絡）の合計です。記録を始めた日より前の分は、含まれません。</div>';
+  t += lineStatsHtml(d);
   return '<div class="notice" style="background:#f4f8f4">' + t + "</div>";
+}
+
+// LINEの配信の通数（今月・先月・これまで・上限）と、次の配信日
+function lineStatsHtml(d) {
+  const l = d.line || { month: 0, last: 0, total: 0, limit: 0, next: "" };
+  const days = { 1: "月", 2: "火", 3: "水", 4: "木", 5: "金", 6: "土", 7: "日" };
+  const sched = (l.days || []).map(function (x) { return days[x]; }).join("・");
+  let t = "<div>LINEに届けた通数：今月 <b>" + l.month + "</b> 通" +
+    (l.limit > 0 ? "（月の上限 " + l.limit + " 通・残り " + Math.max(l.limit - l.month, 0) + " 通）" : "（上限なし）") +
+    "｜先月 " + l.last + " 通｜これまで " + l.total + " 通</div>";
+  if (l.next) t += "<div>次のLINE配信：<b>" + esc(l.next) + " 午前" + esc(l.hour) + "時</b>（毎週 " + esc(sched) + "）</div>";
+  t += '<div class="muted">通数は、LINEの配信で、イベントを届けた人数の合計です（新着の配信、中止・キャンセルの連絡）。上限に達すると、その月は、新しいイベントの配信を保留します（申込の受付は、そのまま）。記録を始める前の分は、含まれません。</div>';
+  return t;
 }
 
 function applicantsHtml(ev, i) {
@@ -269,8 +284,8 @@ function wire() {
   $("s_save").onclick = saveSettings;
   const prev = function () {
     const n = $("s_note").value.trim();
-    $("s_prev").textContent = "【新しいイベント】\n（イベント名）\n日時：2027/01/01 10:00-12:00\n場所：（会場名）\n" + (n ? "\n主催団体より：" + n + "\n" : "") +
-      "\n詳細・お申し込みはこちら\n（リンク）\n\n配信の設定・停止はこちら\n（リンク）" + ($("s_flyer").checked ? "\n＋ チラシの画像" : "");
+    $("s_prev").textContent = "（横にめくるカードの、1枚ぶん）\n" + ($("s_flyer").checked ? "［チラシの画像］\n" : "") + "主催：" + $("s_prev").dataset.org + "\n（イベント名）\n日時：2027/01/01 10:00-12:00\n場所：（会場名）\n（内容の要約）\n" + (n ? "主催団体より：" + n + "\n" : "") +
+      "［詳細・お申し込み］（ボタン）\n\n※ ほかの団体のイベントも、いっしょに、1通にまとまって届きます。";
   };
   $("s_note").oninput = prev; $("s_flyer").onchange = prev; prev();
   $("newbtn").onclick = function () { COPY = null; OPEN["new"] = true; render(); };
