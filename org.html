@@ -189,6 +189,9 @@ function render() {
     contractHtml(d) +
     '<div class="notice">申込者の情報は、このイベントの運営のためにだけ使い、ほかの目的に使ったり、第三者に渡したりしないでください。画面や、ダウンロードしたファイルの取り扱いにご注意ください。</div></div>';
 
+  // 事務局からのお知らせ
+  h = h.replace(/(<div class="card"><div class="row"><b>)/, function (m) { return noticesHtml(d) + m; });
+
   // 新しいイベントの登録
   const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "" };
   h += '<div class="card"><div class="row"><b>イベントを登録する</b><button id="newbtn">新しいイベントを登録</button></div>' +
@@ -239,6 +242,22 @@ function render() {
 }
 
 // ご契約の状況と、LINEに送った通数
+function noticesHtml(d) {
+  const list = d.notices || [];
+  if (!list.length) return "";
+  let t = '<div class="card" style="border-color:#2e7d5b"><b>おいない事務局からのお知らせ</b>';
+  list.slice(0, 5).forEach(function (n) {
+    t += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #e3e3e3">';
+    if (n.image) t += '<img src="' + esc(n.image) + '" alt="" style="max-width:100%;border-radius:6px;display:block;margin-bottom:6px" onerror="this.remove()">';
+    t += '<div style="font-weight:bold">' + esc(n.title) + '</div><div style="white-space:pre-wrap;font-size:14px;margin-top:4px">' + esc(n.body) + '</div>';
+    (n.buttons || []).forEach(function (b) {
+      if (/^https:\/\//.test(b.url)) t += '<a href="' + esc(b.url) + '" target="_blank" rel="noopener" style="display:inline-block;margin:8px 8px 0 0;padding:8px 14px;border-radius:6px;background:#2e7d5b;color:#fff;text-decoration:none;font-size:14px">' + esc(b.label) + '</a>';
+    });
+    t += '</div>';
+  });
+  return t + '</div>';
+}
+
 function contractHtml(d) {
   const c = d.contract || {}, l = d.line || { month: 0, last: 0, total: 0 };
   let t = "";

@@ -66,13 +66,20 @@
     <button type="submit" id="submitBtn" disabled>申し込む</button>
   </form>
   <p id="message"></p>
-  <p id="tosettingsrow" style="display:none;text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="tolist">公開中のイベント一覧</a>　｜　<a href="#" id="tosettings">新着イベントの配信の設定・停止</a></p>
+  <p id="tosettingsrow" style="display:none;text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="tolist">公開中のイベント一覧</a>　｜　<a href="#" id="tonews">事務局からのお知らせ</a>　｜　<a href="#" id="tosettings">新着イベントの配信の設定・停止</a></p>
 
   <div id="evlist" style="display:none;">
     <h2>公開中のイベント</h2>
     <p id="evlistmsg" style="font-size:14px;color:#444;"></p>
     <div id="evlistbody"></div>
-    <p style="text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="evlist_settings">新着イベントの配信の設定・停止</a></p>
+    <p style="text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="evlist_news">事務局からのお知らせ</a>　｜　<a href="#" id="evlist_settings">新着イベントの配信の設定・停止</a></p>
+  </div>
+
+  <div id="newspage" style="display:none;">
+    <h2>おいない事務局からのお知らせ</h2>
+    <p id="newsmsg" style="font-size:14px;color:#444;"></p>
+    <div id="newsbody"></div>
+    <p style="text-align:center;font-size:13px;margin-top:18px;"><a href="#" id="news_list">公開中のイベント一覧</a>　｜　<a href="#" id="news_settings">配信の設定</a></p>
   </div>
 
   <div id="settings" style="display:none;">
@@ -90,6 +97,13 @@
       <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:0;">
         <input type="radio" name="smode" value="off" style="width:auto;margin-top:3px;"><span>受け取らない（配信を停止する）</span>
       </label>
+    </fieldset>
+    <fieldset style="border:1px solid #ddd;border-radius:8px;margin:0 0 14px;padding:10px 12px;">
+      <legend style="font-size:13px;padding:0 4px;">事務局からのお知らせ</legend>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:4px;">
+        <input type="checkbox" id="s_notice" style="width:auto;margin-top:3px;"><span>おいない事務局からのお知らせも受け取る</span>
+      </label>
+      <p style="font-size:12px;color:#555;margin:4px 0 0 26px;line-height:1.6;">地域のお知らせや、事務局からの連絡を、LINEでお届けします（新着イベントの配信といっしょに届くことがあります）。いつでも、ここで、やめられます。</p>
     </fieldset>
     <button type="button" id="s_save">保存する</button>
     <p id="s_msg" style="margin-top:12px;min-height:1.5em;font-size:14px;"></p>
@@ -169,6 +183,10 @@
         }
         if (found.page === "events") {
           openEventList();
+          return;
+        }
+        if (found.page === "news") {
+          openNews();
           return;
         }
         if (!/^evt_\d+$/.test(eventId) || !/^org_\d+$/.test(orgId)) {
@@ -416,6 +434,62 @@
       }
     }
 
+    // 事務局からのお知らせ（...?page=news）
+    async function openNews() {
+      $("form").style.display = "none";
+      $("evcard").style.display = "none";
+      $("evtinfo").style.display = "none";
+      $("tosettingsrow").style.display = "none";
+      $("message").textContent = "";
+      document.querySelector("h2").style.display = "none";
+      $("newspage").style.display = "block";
+      $("newsmsg").textContent = "読み込み中...";
+      try {
+        const res = await fetch(INFO_URL + "?news=1");
+        const d = await res.json();
+        if (!d.ok) { $("newsmsg").textContent = "読み込めませんでした。時間をおいて、開き直してください。"; return; }
+        if (!d.notices.length) { $("newsmsg").textContent = "いま、お知らせはありません。"; return; }
+        $("newsmsg").textContent = "";
+        const body = $("newsbody");
+        body.textContent = "";
+        d.notices.forEach((n) => {
+          const card = document.createElement("div");
+          card.style.cssText = "border:1px solid #ddd;border-radius:10px;padding:12px;margin:0 0 12px;";
+          if (n.image) {
+            const im = document.createElement("img");
+            im.src = n.image; im.alt = ""; im.loading = "lazy";
+            im.style.cssText = "width:100%;border-radius:8px;margin:0 0 8px;display:block;";
+            im.addEventListener("error", () => im.remove());
+            card.appendChild(im);
+          }
+          const t = document.createElement("div");
+          t.style.cssText = "font-size:16px;font-weight:bold;margin:0 0 6px;";
+          t.textContent = n.title;
+          const b = document.createElement("div");
+          b.style.cssText = "font-size:14px;line-height:1.7;white-space:pre-wrap;";
+          b.textContent = n.body;
+          card.appendChild(t); card.appendChild(b);
+          if (n.date) {
+            const dt = document.createElement("div");
+            dt.style.cssText = "font-size:12px;color:#777;margin-top:6px;";
+            dt.textContent = n.date.replace(/-/g, "/");
+            card.appendChild(dt);
+          }
+          (n.buttons || []).forEach((bt) => {
+            const a = document.createElement("a");
+            a.href = bt.url; a.target = "_blank"; a.rel = "noopener";
+            a.textContent = bt.label;
+            a.style.cssText = "display:block;text-align:center;margin-top:8px;padding:10px;border-radius:8px;background:#2e7d5b;color:#fff;text-decoration:none;font-size:14px;";
+            card.appendChild(a);
+          });
+          body.appendChild(card);
+        });
+      } catch (e) {
+        console.error(e);
+        $("newsmsg").textContent = "読み込めませんでした。時間をおいて、開き直してください。";
+      }
+    }
+
     async function openSettings(fromEvent) {
       $("form").style.display = "none";
       $("evcard").style.display = "none";
@@ -431,9 +505,10 @@
         const d = await settingsPost({ action: "sub_get", org_id: orgId });
         if (!d.ok) { sShow(d.error === "unauthorized" ? "ログインの有効期限が切れました。ミニアプリを開き直してください。" : "読み込めませんでした。", "error"); return; }
         $("s_status").textContent = d.registered
-          ? "現在の設定：" + (d.mode === "all" ? "すべての団体の新着イベントを受け取る" : d.mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "受け取らない")
-          : "現在は、新着イベントの配信を希望していません。";
+          ? "現在の設定：" + (d.mode === "all" ? "すべての団体の新着イベントを受け取る" : d.mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "新着イベントは受け取らない") + (d.notice ? "／事務局のお知らせも受け取る" : "")
+          : "現在は、配信を希望していません。";
         document.querySelector('input[name="smode"][value="' + d.mode + '"]').checked = true;
+        $("s_notice").checked = !!d.notice;
         renderOrgBoxes(d.orgs);
         sShow("");
         $("s_save").disabled = false;
@@ -445,6 +520,10 @@
 
     $("tosettings").addEventListener("click", (e) => { e.preventDefault(); openSettings(true); });
     $("tolist").addEventListener("click", (e) => { e.preventDefault(); location.search = "?page=events"; });
+    $("tonews").addEventListener("click", (e) => { e.preventDefault(); location.search = "?page=news"; });
+    $("evlist_news").addEventListener("click", (e) => { e.preventDefault(); location.search = "?page=news"; });
+    $("news_list").addEventListener("click", (e) => { e.preventDefault(); location.search = "?page=events"; });
+    $("news_settings").addEventListener("click", (e) => { e.preventDefault(); $("newspage").style.display = "none"; openSettings(false); });
     $("evlist_settings").addEventListener("click", (e) => { e.preventDefault(); $("evlist").style.display = "none"; openSettings(false); });
     $("s_backlink").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
 
@@ -456,11 +535,11 @@
       $("s_save").disabled = true;
       sShow("保存中...");
       try {
-        const d = await settingsPost({ action: "sub_set", mode: mode, org_ids: ids.join(",") });
+        const d = await settingsPost({ action: "sub_set", mode: mode, org_ids: ids.join(","), notice: $("s_notice").checked ? "1" : "0" });
         if (d.ok) {
           sShow("保存しました。", "ok");
-          $("s_status").textContent = "現在の設定：" + (mode === "all" ? "すべての団体の新着イベントを受け取る" : mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "受け取らない");
-          if (mode !== "off") { try { await liff.requestFriendship(); } catch (_) {} }
+          $("s_status").textContent = "現在の設定：" + (mode === "all" ? "すべての団体の新着イベントを受け取る" : mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "新着イベントは受け取らない") + ($("s_notice").checked ? "／事務局のお知らせも受け取る" : "");
+          if (mode !== "off" || $("s_notice").checked) { try { await liff.requestFriendship(); } catch (_) {} }
         } else {
           sShow(d.error === "unauthorized" ? "ログインの有効期限が切れました。ミニアプリを開き直してください。" : "保存できませんでした。時間をおいてもう一度お試しください。", "error");
         }
