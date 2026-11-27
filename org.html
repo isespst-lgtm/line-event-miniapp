@@ -178,6 +178,8 @@ function render() {
       '<div class="mhead"><span>設定</span><button data-close="set">× 閉じる</button></div>' +
       '<label class="f">担当者のお名前</label><input type="text" id="s_contact" maxlength="50" value="' + esc(d.org.contact) + '">' +
       '<label class="f">担当者のメールアドレス（登録コードなどのご連絡先）</label><input type="email" id="s_email" maxlength="100" value="' + esc(d.org.email) + '">' +
+      '<label class="f">団体の活動分野（' + (d.field_max || 3) + 'つまで。参加者が「この分野の情報だけ受け取る」を選んだとき、配信の対象になります）</label><div id="s_fields">' +
+        (d.field_list || []).map(function (f, i) { return '<label style="display:inline-block;margin:2px 14px 2px 0;font-weight:normal"><input type="checkbox" name="s_field" value="' + esc(f) + '"' + ((st.fields || []).indexOf(f) >= 0 ? " checked" : "") + ' style="width:auto"> ' + esc(f) + '</label>'; }).join("") + '</div>' +
       '<div class="chk"><input type="checkbox" id="s_notify"' + (st.notify ? " checked" : "") + '><label for="s_notify">申込があったとき、メールで知らせる（氏名と人数だけをお知らせします）</label></div>' +
       '<label class="f">申込通知の送り先（空欄のときは、上のメールアドレス）</label><input type="email" id="s_to" maxlength="100" value="' + esc(st.notifyTo) + '">' +
       '<div class="chk"><input type="checkbox" id="s_line"' + (st.line ? " checked" : "") + '><label for="s_line">新しく公開されたイベントを、LINEで、配信を希望した方に案内する（毎週 火曜・金曜に、まとめて配信します）</label></div>' +
@@ -191,6 +193,7 @@ function render() {
 
   // 事務局からのお知らせ
   h = h.replace(/(<div class="card"><div class="row"><b>)/, function (m) { return noticesHtml(d) + m; });
+  if (!(st.fields || []).length) h = h.replace(/(<div class="card"><div class="row"><b>)/, function (m) { return '<div class="notice" style="background:#fff8e1">団体の「活動分野」が、まだ選ばれていません。右上の「設定」で、選んでください（参加者が、分野で配信を選ぶときに使います）。</div>' + m; });
 
   // 新しいイベントの登録
   const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "" };
@@ -306,6 +309,11 @@ function wire() {
     $("s_prev").textContent = "（横にめくるカードの、1枚ぶん）\n" + ($("s_flyer").checked ? "［チラシの画像］\n" : "") + "主催：" + $("s_prev").dataset.org + "\n（イベント名）\n日時：2027/01/01 10:00-12:00\n場所：（会場名）\n（内容の要約）\n" + (n ? "主催団体より：" + n + "\n" : "") +
       "［詳細・お申し込み］（ボタン）\n\n※ ほかの団体のイベントも、いっしょに、1通にまとまって届きます。";
   };
+  document.querySelectorAll('input[name="s_field"]').forEach(function (c) {
+    c.onchange = function () {
+      if (document.querySelectorAll('input[name="s_field"]:checked').length > (DATA.field_max || 3)) { c.checked = false; alert("活動分野は、" + (DATA.field_max || 3) + "つまでです。"); }
+    };
+  });
   $("s_note").oninput = prev; $("s_flyer").onchange = prev; prev();
   $("newbtn").onclick = function () { COPY = null; OPEN["new"] = true; render(); };
   $("n_save").onclick = createEvent;
@@ -414,7 +422,8 @@ async function saveSettings() {
     const d = await post("org_settings", {
       contact: $("s_contact").value, email: $("s_email").value, notify: $("s_notify").checked ? "1" : "0",
       notify_to: $("s_to").value, line: $("s_line").checked ? "1" : "0",
-      flyer: $("s_flyer").checked ? "1" : "0", line_note: $("s_note").value });
+      flyer: $("s_flyer").checked ? "1" : "0", line_note: $("s_note").value,
+      fields: Array.prototype.map.call(document.querySelectorAll('input[name="s_field"]:checked'), function (c) { return c.value; }).join(",") });
     if (!d.ok) { setMsg("set", "err", errText(d)); return; }
     OPEN.set = false;
     await reload();

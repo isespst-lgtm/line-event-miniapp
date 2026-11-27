@@ -94,6 +94,10 @@
         <input type="radio" name="smode" value="org" style="width:auto;margin-top:3px;"><span>選んだ団体の新着イベントだけ受け取る</span>
       </label>
       <div id="s_orgs" style="margin:0 0 10px 26px;font-size:14px;"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;">
+        <input type="radio" name="smode" value="field" style="width:auto;margin-top:3px;"><span>選んだ分野の新着イベントだけ受け取る</span>
+      </label>
+      <div id="s_fields" style="margin:0 0 10px 26px;font-size:14px;"></div>
       <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:0;">
         <input type="radio" name="smode" value="off" style="width:auto;margin-top:3px;"><span>受け取らない（配信を停止する）</span>
       </label>
@@ -367,6 +371,22 @@
       return res.json();
     }
 
+    function renderFieldBoxes(fields) {
+      const box = $("s_fields");
+      box.textContent = "";
+      fields.forEach((f) => {
+        const lab = document.createElement("label");
+        lab.style.cssText = "display:flex;gap:8px;align-items:center;margin:0 0 6px;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.value = f.name; cb.checked = !!f.selected; cb.style.width = "auto";
+        cb.addEventListener("change", () => { if (cb.checked) document.querySelector('input[name="smode"][value="field"]').checked = true; });
+        const sp = document.createElement("span");
+        sp.textContent = f.name;
+        lab.appendChild(cb); lab.appendChild(sp);
+        box.appendChild(lab);
+      });
+    }
+
     function renderOrgBoxes(orgs) {
       const box = $("s_orgs");
       box.textContent = "";
@@ -505,11 +525,12 @@
         const d = await settingsPost({ action: "sub_get", org_id: orgId });
         if (!d.ok) { sShow(d.error === "unauthorized" ? "ログインの有効期限が切れました。ミニアプリを開き直してください。" : "読み込めませんでした。", "error"); return; }
         $("s_status").textContent = d.registered
-          ? "現在の設定：" + (d.mode === "all" ? "すべての団体の新着イベントを受け取る" : d.mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "新着イベントは受け取らない") + (d.notice ? "／事務局のお知らせも受け取る" : "")
+          ? "現在の設定：" + (d.mode === "all" ? "すべての団体の新着イベントを受け取る" : d.mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : d.mode === "field" ? "選んだ分野の新着イベントだけ受け取る" : "新着イベントは受け取らない") + (d.notice ? "／事務局のお知らせも受け取る" : "")
           : "現在は、配信を希望していません。";
         document.querySelector('input[name="smode"][value="' + d.mode + '"]').checked = true;
         $("s_notice").checked = !!d.notice;
         renderOrgBoxes(d.orgs);
+        renderFieldBoxes(d.fields || []);
         sShow("");
         $("s_save").disabled = false;
       } catch (e) {
@@ -532,13 +553,15 @@
       if (!mode) { sShow("受け取る範囲を選んでください。", "error"); return; }
       const ids = Array.from(document.querySelectorAll("#s_orgs input:checked")).map((c) => c.value);
       if (mode === "org" && ids.length === 0) { sShow("団体を、1つ以上選んでください。", "error"); return; }
+      const fl = Array.from(document.querySelectorAll("#s_fields input:checked")).map((c) => c.value);
+      if (mode === "field" && fl.length === 0) { sShow("分野を、1つ以上選んでください。", "error"); return; }
       $("s_save").disabled = true;
       sShow("保存中...");
       try {
-        const d = await settingsPost({ action: "sub_set", mode: mode, org_ids: ids.join(","), notice: $("s_notice").checked ? "1" : "0" });
+        const d = await settingsPost({ action: "sub_set", mode: mode, org_ids: ids.join(","), fields: fl.join(","), notice: $("s_notice").checked ? "1" : "0" });
         if (d.ok) {
           sShow("保存しました。", "ok");
-          $("s_status").textContent = "現在の設定：" + (mode === "all" ? "すべての団体の新着イベントを受け取る" : mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : "新着イベントは受け取らない") + ($("s_notice").checked ? "／事務局のお知らせも受け取る" : "");
+          $("s_status").textContent = "現在の設定：" + (mode === "all" ? "すべての団体の新着イベントを受け取る" : mode === "org" ? "選んだ団体の新着イベントだけ受け取る" : mode === "field" ? "選んだ分野の新着イベントだけ受け取る" : "新着イベントは受け取らない") + ($("s_notice").checked ? "／事務局のお知らせも受け取る" : "");
           if (mode !== "off" || $("s_notice").checked) { try { await liff.requestFriendship(); } catch (_) {} }
         } else {
           sShow(d.error === "unauthorized" ? "ログインの有効期限が切れました。ミニアプリを開き直してください。" : "保存できませんでした。時間をおいてもう一度お試しください。", "error");
