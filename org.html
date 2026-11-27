@@ -53,8 +53,12 @@
 <main>
   <div id="login" class="card">
     <p>登録団体の方は、登録のお知らせメールに書かれた「登録コード」を入力してください。</p>
-    <input id="code" type="password" autocomplete="off" placeholder="登録コード">
-    <p><button id="go">開く</button></p>
+    <form id="loginform" autocomplete="on">
+      <input type="text" name="username" value="おいない登録団体" autocomplete="username" readonly tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+      <input id="code" name="password" type="password" autocomplete="current-password" placeholder="登録コード">
+      <p style="margin:6px 0"><label style="font-weight:normal;font-size:13px"><input type="checkbox" id="remember" style="width:auto"> この端末に記憶する（自分専用の端末だけで、選んでください）</label></p>
+      <p><button id="go" type="submit">開く</button></p>
+    </form>
     <div id="err" class="err"></div>
     <p class="muted">登録コードは、他の方に教えないでください。なくした場合は、事務局（urata@e-ise.net）へご連絡ください。</p>
   </div>
@@ -66,7 +70,7 @@ const $ = function (id) { return document.getElementById(id); };
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
 
 let DATA = null;
-let CODE = "";      // 画面を閉じるまで、メモリの中だけに置く（保存しない）
+let CODE = "";      // 画面を閉じるまで、メモリの中に置く（「この端末に記憶する」を選んだときだけ、端末にも保存する）
 let COPY = null;    // 「コピーして登録」の、元の内容
 const OPEN = {};    // 開いているパネル
 const MSG = {};     // 各パネルのメッセージ
@@ -107,20 +111,37 @@ function msgHtml(k) { const m = MSG[k]; return '<div id="m_' + k + '" class="' +
 function disp(k) { return OPEN[k] ? "block" : "none"; }
 function toggle(k) { OPEN[k] = !OPEN[k]; const el = $("p_" + k); if (el) el.style.display = disp(k); }
 
-$("go").onclick = async function () {
-  CODE = $("code").value.trim();
+// 「この端末に記憶する」：チェックしたときだけ、この端末のブラウザに、登録コードを30日間保存する
+const REMEMBER_KEY = "oinai_org_code";
+const REMEMBER_DAYS = 30;
+function rememberGet() {
+  try {
+    const v = JSON.parse(localStorage.getItem(REMEMBER_KEY) || "null");
+    if (v && v.c && v.t && Date.now() - v.t < REMEMBER_DAYS * 86400000) return v.c;
+    localStorage.removeItem(REMEMBER_KEY);
+  } catch (_) {}
+  return "";
+}
+function rememberSet(c) { try { localStorage.setItem(REMEMBER_KEY, JSON.stringify({ c: c, t: Date.now() })); } catch (_) {} }
+function rememberClear() { try { localStorage.removeItem(REMEMBER_KEY); } catch (_) {} }
+
+$("loginform").onsubmit = function (e) { e.preventDefault(); login(); };
+async function login(saved) {
+  CODE = saved || $("code").value.trim();
   $("err").textContent = "";
   if (!CODE) { $("err").textContent = "登録コードを入力してください"; return; }
   $("go").disabled = true;
   try {
     const d = await post("org_home");
-    if (!d.ok) { $("err").textContent = errText(d); CODE = ""; return; }
+    if (!d.ok) { $("err").textContent = errText(d); if (saved) rememberClear(); CODE = ""; return; }
     DATA = d; $("code").value = "";
+    if (!saved) { if ($("remember").checked) rememberSet(CODE); else rememberClear(); }
     render();
   } catch (e) {
     CODE = ""; $("err").textContent = "通信に失敗しました。もう一度お試しください。";
   } finally { $("go").disabled = false; }
-};
+}
+(function () { const c = rememberGet(); if (c) { $("remember").checked = true; login(c); } })();
 
 async function reload() {
   const d = await post("org_home");
@@ -300,7 +321,7 @@ function applicantsHtml(ev, i) {
 }
 
 function wire() {
-  $("out").onclick = function () { DATA = null; CODE = ""; COPY = null; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
+  $("out").onclick = function () { rememberClear(); $("remember").checked = false; DATA = null; CODE = ""; COPY = null; $("home").innerHTML = ""; $("home").style.display = "none"; $("login").style.display = "block"; };
   $("setbtn").onclick = function () { OPEN.set = true; render(); };
   document.querySelectorAll("[data-close]").forEach(function (b) { b.onclick = function () { closePanel(b.dataset.close); }; });
   $("s_save").onclick = saveSettings;
