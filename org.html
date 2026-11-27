@@ -82,7 +82,12 @@ const ERR = {
   cancelled: "中止したイベントは、修正できません。",
   too_many_pending: "事務局の確認待ちのイベントが、多くなっています。確認が済むまで、お待ちください。",
   duplicate: "同じLINEアカウントの申込がすでにあるため、戻せません。",
-  suspended: "この団体の利用は、現在、停止されています。事務局（urata@e-ise.net）へご連絡ください。"
+  suspended: "この団体の利用は、現在、停止されています。事務局（urata@e-ise.net）へご連絡ください。",
+  ai_off: "「チラシで投稿」は、お申し込みの団体のみご利用いただけます。事務局（urata@e-ise.net）へご連絡ください。",
+  ai_unavailable: "チラシの読み取りが、いま、利用できません。時間をおいて、お試しいただくか、手で入力して登録してください。",
+  not_flyer: "イベントのチラシとして読み取れませんでした。チラシの画像を、選び直してください。",
+  flyer_too_big: "画像が大きすぎます。別の画像を選ぶか、写真を撮り直してください。",
+  flyer_bad_image: "画像を読み込めませんでした（JPEGまたはPNGの画像を選んでください）。"
 };
 
 async function post(action, fields) {
@@ -97,6 +102,7 @@ function errText(d) {
   if (d.error === "expired") return "ご契約の期間が終了しています。新しいイベントを登録するには、契約の更新が必要です。事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "plan_limit") return "ご契約の投稿数（" + d.limit + "回）に、達しています。続けて登録するには、契約の更新・変更が必要です。事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "limit_reached") return "今月に登録できるイベントの数（" + d.limit + "件）に、達しています。増やしたいときは、事務局へご連絡ください。";
+  if (d.error === "ai_limit") return "今月の「チラシで投稿」の読み取り回数（" + d.limit + "回）に、達しています。手で入力して登録するか、事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
   if (d.error === "full") return "定員を超えるため、戻せません（空きは " + (d.remaining || 0) + " 名です）。";
   if (d.error === "invalid") return "処理できませんでした（入力内容、または、サーバー側の更新が反映されていない可能性があります）。改善しないときは、事務局へご連絡ください。";
@@ -218,10 +224,14 @@ function render() {
 
   // 新しいイベントの登録
   const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "" };
-  h += '<div class="card"><div class="row"><b>イベントを登録する</b><button id="newbtn">新しいイベントを登録</button></div>' +
+  const ai = d.flyer_ai && d.flyer_ai.on;
+  h += '<div class="card"><div class="row"><b>イベントを登録する</b><span>' + (ai ? '<button id="aibtn">📷 チラシで投稿</button> ' : "") + '<button id="newbtn">新しいイベントを登録</button></span></div>' +
+    (ai ? '<input type="file" id="aifile" accept="image/*" style="display:none"><div class="muted" style="margin-top:6px">「チラシで投稿」：チラシの画像を選ぶと、AIが内容を読み取って、登録の入力欄に入れます。確認して、直してから、登録できます（今月 ' + d.flyer_ai.used + ' / ' + d.flyer_ai.limit + ' 回）。</div>' : "") +
     '<div id="p_new" class="panel modal new" style="display:' + disp("new") + '">' +
-    '<div class="mhead"><span>' + (COPY ? "イベントをコピーして登録" : "新しいイベントを登録") + '</span><button data-close="new">× 閉じる</button></div>' +
-    (COPY ? '<div class="notice">「' + esc(COPY.title) + '」の内容をコピーしました。開催日と締切は、入れ直してください。</div>' : "") +
+    '<div class="mhead"><span>' + (COPY && COPY.ai ? "チラシから登録（内容の確認）" : COPY ? "イベントをコピーして登録" : "新しいイベントを登録") + '</span><button data-close="new">× 閉じる</button></div>' +
+    (COPY && COPY.ai ? '<div class="notice" style="background:#eef7ee;color:#1f5a3f">チラシから、AIが読み取りました。<b>内容を確認して、まちがいがあれば直してください。</b>' + (COPY.check && COPY.check.length ? '黄色の欄は、読み取れなかった、または、自信のない項目です。' : "") + '「定員」は、チラシに書かれていないときは、ご自分で入れてください。' +
+      (COPY.preview ? '<br><img src="' + COPY.preview + '" alt="選んだチラシ" style="max-width:140px;max-height:140px;border-radius:6px;margin-top:6px;border:1px solid #ccc">' : "") + '</div>'
+    : COPY ? '<div class="notice">「' + esc(COPY.title) + '」の内容をコピーしました。開催日と締切は、入れ直してください。</div>' : "") +
     evFields("n_", blank) +
     '<div class="notice">登録したイベントは、事務局が内容を確認してから、公開します。公開されるまでは、申込できません。</div>' +
     '<div class="mfoot"><button id="n_save">この内容で登録する</button><button class="cancel" data-close="new">取り消し（登録しない）</button></div>' + msgHtml("new") + '</div></div>';
@@ -337,6 +347,15 @@ function wire() {
   });
   $("s_note").oninput = prev; $("s_flyer").onchange = prev; prev();
   $("newbtn").onclick = function () { COPY = null; OPEN["new"] = true; render(); };
+  if ($("aibtn")) {
+    $("aibtn").onclick = function () { $("aifile").value = ""; $("aifile").click(); };
+    $("aifile").onchange = function () { if (this.files && this.files[0]) readFlyer(this.files[0]); };
+  }
+  if (COPY && COPY.ai && COPY.check) { // 読み取れなかった項目を、黄色にする
+    const ids = { title: "n_title", date: "n_date", time: "n_time", place: "n_place", capacity: "n_cap", detail: "n_detail" };
+    COPY.check.forEach(function (k) { if ($(ids[k])) $(ids[k]).style.background = "#fff3bf"; });
+    if (!COPY.capacity && $("n_cap")) $("n_cap").style.background = "#fff3bf";
+  }
   $("n_save").onclick = createEvent;
   document.querySelectorAll("[data-a]").forEach(function (b) {
     b.onclick = function () { act(b.dataset.a, +b.dataset.i, b.dataset.j === undefined ? -1 : +b.dataset.j, b); };
@@ -422,6 +441,49 @@ async function act(a, i, j, btn) {
       await reload();
       setMsg("ev_" + k, "ok", (a === "acx" ? "キャンセルにしました。" : "申込済に戻しました。") + (d.notified ? "本人に、LINEで連絡しました。" : "") + (d.notify_failed ? "LINEの連絡に失敗しました。個別に、ご連絡ください。" : ""));
     });
+  }
+}
+
+// 「チラシで投稿」：画像を縮めて（長い辺を1600pxまで）JPEGにし、AIに読み取らせる
+function shrinkImage(file) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = function () {
+      const max = 1600, r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.naturalWidth * r)); c.height = Math.max(1, Math.round(img.naturalHeight * r));
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("load")); };
+    img.src = url;
+  });
+}
+async function readFlyer(file) {
+  const btn = $("aibtn");
+  if (file.size > 30 * 1024 * 1024) { setMsg("top", "err", ERR.flyer_too_big); window.scrollTo(0, 0); render(); return; }
+  btn.disabled = true;
+  setMsg("top", "ok", "チラシを読み取っています…（10〜30秒ほどかかります。画面を閉じずに、お待ちください）");
+  const el = $("m_top"); if (el) { el.className = "ok"; el.textContent = MSG.top.text; }
+  window.scrollTo(0, 0);
+  try {
+    const dataUrl = await shrinkImage(file);
+    const d = await post("org_flyer_read", { image: dataUrl.split(",")[1], mime: "image/jpeg" });
+    if (!d.ok) { setMsg("top", "err", errText(d)); await reload(); return; }
+    MSG.top = null;
+    COPY = Object.assign({ video: "" }, d.fields, { ai: true, preview: dataUrl });
+    if (DATA.flyer_ai) DATA.flyer_ai.used = d.used;
+    OPEN["new"] = true;
+    render();
+  } catch (e) {
+    console.error(e);
+    setMsg("top", "err", "チラシを読み込めませんでした（JPEGまたはPNGの画像を、選んでください）。時間をおいて、もう一度、お試しください。");
+    render();
+  } finally {
+    if ($("aibtn")) $("aibtn").disabled = false;
   }
 }
 
