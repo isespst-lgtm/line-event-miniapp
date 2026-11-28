@@ -92,7 +92,9 @@ const ERR = {
   ai_unavailable: "チラシの読み取りが、いま、利用できません。時間をおいて、お試しいただくか、手で入力して登録してください。",
   not_flyer: "イベントのチラシとして読み取れませんでした。チラシの画像を、選び直してください。",
   flyer_too_big: "画像が大きすぎます。別の画像を選ぶか、写真を撮り直してください。",
-  flyer_bad_image: "画像を読み込めませんでした（JPEGまたはPNGの画像を選んでください）。"
+  flyer_bad_image: "画像を読み込めませんでした（JPEGまたはPNGの画像を選んでください）。",
+  sns_off: "「SNS投稿」は、お申し込みの団体のみご利用いただけます。事務局（urata@e-ise.net）へご連絡ください。",
+  sns_need_image: "Instagramに投稿するには、チラシ画像が必要です。チラシ画像のURLを入れるか、「チラシで投稿」で画像を選んでください。"
 };
 
 async function post(action, fields) {
@@ -108,6 +110,7 @@ function errText(d) {
   if (d.error === "plan_limit") return "ご契約の投稿数（" + d.limit + "回）に、達しています。続けて登録するには、契約の更新・変更が必要です。事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "limit_reached") return "今月に登録できるイベントの数（" + d.limit + "件）に、達しています。増やしたいときは、事務局へご連絡ください。";
   if (d.error === "ai_limit") return "今月の「チラシで投稿」の読み取り回数（" + d.limit + "回）に、達しています。手で入力して登録するか、事務局（urata@e-ise.net）へご連絡ください。";
+  if (d.error === "sns_limit") return "今月のSNS投稿の回数（" + d.limit + "回。すでに " + d.used + " 回）を超えるため、登録できません。投稿先を減らすか、SNS投稿のチェックを外してください。増やしたいときは、事務局（urata@e-ise.net）へご連絡ください。";
   if (d.error === "capacity_low") return "すでに " + d.used + " 名の申込があるため、定員を、それより少なくはできません。";
   if (d.error === "full") return "定員を超えるため、戻せません（空きは " + (d.remaining || 0) + " 名です）。";
   if (d.error === "invalid") return "処理できませんでした（入力内容、または、サーバー側の更新が反映されていない可能性があります）。改善しないときは、事務局へご連絡ください。";
@@ -198,6 +201,14 @@ function checkVideoInput(el) {
   if (!/^https:\/\/\S+$/.test(v)) { alert("動画のURLは、https:// で始まるものを、入れてください。"); return; }
   if (/\.(jpe?g|png|gif)(\?|#|$)/i.test(v)) { alert("これは画像のURLのようです。画像は「チラシ画像のURL」の欄に入れてください。"); }
 }
+// SNS投稿のオプション（契約している団体だけ）。新しいイベントの登録のときに、投稿先を選ぶ
+function snsBlock(d) {
+  if (!d.sns || !d.sns.on) return "";
+  return '<fieldset style="border:1px solid #cfd8d2;border-radius:8px;margin:14px 0 4px;padding:8px 12px;background:#f7fbf8"><legend style="font-size:13px;padding:0 4px">📣 SNSにも投稿する（オプション）</legend>' +
+    d.sns.platforms.map(function (p) { return '<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" name="n_sns" value="' + esc(p) + '" style="width:auto"><span>' + esc(p) + '</span></label>'; }).join("") +
+    '<div class="muted">イベントが公開されたあと、ICNの「おいない」のアカウントに、チラシと案内を投稿します。投稿は、1つのSNSにつき、1回分に数えます（今月 ' + d.sns.used + ' / ' + (d.sns.limit || "無制限") + ' 回）。' +
+    'Instagramは、チラシ画像が必要です。いちど投稿したものは、取り消しにくいので、内容をよく確認してください。</div></fieldset>';
+}
 function checkLinkInput(el) {
   const v = el.value.trim();
   if (!v) return;
@@ -205,7 +216,8 @@ function checkLinkInput(el) {
 }
 function readEv(px) {
   return { title: $(px + "title").value, date: $(px + "date").value, time: $(px + "time").value, place: $(px + "place").value,
-    capacity: $(px + "cap").value, deadline: $(px + "dl").value, detail: $(px + "detail").value, flyer: $(px + "flyer").value, video: $(px + "video").value, link: $(px + "link").value };
+    capacity: $(px + "cap").value, deadline: $(px + "dl").value, detail: $(px + "detail").value, flyer: $(px + "flyer").value, video: $(px + "video").value, link: $(px + "link").value,
+    sns: Array.prototype.map.call(document.querySelectorAll('input[name="' + px + 'sns"]:checked'), function (c) { return c.value; }).join(",") };
 }
 
 function render() {
@@ -254,7 +266,7 @@ function render() {
       (COPY.preview ? '<br><img src="' + COPY.preview + '" alt="選んだチラシ" style="max-width:140px;max-height:140px;border-radius:6px;margin-top:6px;border:1px solid #ccc">' : "") +
       '<br><button type="button" class="sub" id="n_reai" style="margin-top:6px">別のチラシで、読み取り直す</button> <span class="muted">（読み取りは、もう1回分に数えられます。いまの入力内容は、消えます）</span></div>'
     : COPY ? '<div class="notice">「' + esc(COPY.title) + '」の内容をコピーしました。開催日と締切は、入れ直してください。</div>' : "") +
-    evFields("n_", blank) +
+    evFields("n_", blank) + snsBlock(d) +
     '<div class="notice">登録したイベントは、事務局が内容を確認してから、公開します。公開されるまでは、申込できません。</div>' +
     '<div class="mfoot"><button id="n_save">この内容で登録する</button><button class="cancel" data-close="new">取り消し（登録しない）</button></div>' + msgHtml("new") + '</div></div>';
 
