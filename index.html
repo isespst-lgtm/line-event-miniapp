@@ -416,6 +416,7 @@
 
     // 公開中のイベント一覧（リッチメニューから開く: ...?page=events）
     async function openEventList() {
+      document.title = "公開中のイベント";
       $("form").style.display = "none";
       $("evcard").style.display = "none";
       $("evtinfo").style.display = "none";
@@ -461,6 +462,7 @@
 
     // 事務局からのお知らせ（...?page=news）
     async function openNews() {
+      document.title = "事務局からのお知らせ";
       $("form").style.display = "none";
       $("evcard").style.display = "none";
       $("evtinfo").style.display = "none";
@@ -516,6 +518,7 @@
     }
 
     async function openSettings(fromEvent) {
+      document.title = "新着イベントの配信設定";
       $("form").style.display = "none";
       $("evcard").style.display = "none";
       $("evtinfo").style.display = "none";
