@@ -71,6 +71,7 @@ function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function
 
 let DATA = null;
 let CODE = "";      // 画面を閉じるまで、メモリの中に置く（「この端末に記憶する」を選んだときだけ、端末にも保存する）
+let AIPEND = null;  // 「チラシで投稿」：選んだ画像（読み取りの前の確認用）
 let COPY = null;    // 「コピーして登録」の、元の内容
 const OPEN = {};    // 開いているパネル
 const MSG = {};     // 各パネルのメッセージ
@@ -225,12 +226,19 @@ function render() {
   // 新しいイベントの登録
   const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "" };
   const ai = d.flyer_ai && d.flyer_ai.on;
-  h += '<div class="card"><div class="row"><b>イベントを登録する</b><span>' + (ai ? '<button id="aibtn">📷 チラシで投稿</button> ' : "") + '<button id="newbtn">新しいイベントを登録</button></span></div>' +
-    (ai ? '<input type="file" id="aifile" accept="image/*" style="display:none"><div class="muted" style="margin-top:6px">「チラシで投稿」：チラシの画像を選ぶと、AIが内容を読み取って、登録の入力欄に入れます。確認して、直してから、登録できます（今月 ' + d.flyer_ai.used + ' / ' + d.flyer_ai.limit + ' 回）。</div>' : "") +
+  h += '<div id="p_ai" class="panel modal new" style="display:' + disp("ai") + '">' +
+    '<div class="mhead"><span>チラシの読み取り（確認）</span><button data-close="ai">× 閉じる</button></div>' +
+    '<div>' + (AIPEND ? AIPEND.map(function (u, i) { return '<img src="' + u + '" alt="選んだ画像' + (i + 1) + '" style="max-width:47%;max-height:240px;border:1px solid #ccc;border-radius:6px;margin:0 6px 6px 0">'; }).join("") : "") + '</div>' +
+    '<div class="muted">選んだ画像：' + (AIPEND ? AIPEND.length : 0) + ' 枚（1枚目を、LINEの配信と申込ページの、チラシに使います）</div>' +
+    '<div class="notice"><b>読み取りを始めると、結果を登録しなくても、今月の回数から1回分が減ります</b>（今月 ' + (ai ? d.flyer_ai.used + ' / ' + d.flyer_ai.limit : "") + ' 回。2枚でも、1回分です）。画像を選び間違えたときは、読み取りの前に、「画像を選び直す」か「やめる」を押してください。</div>' +
+    '<div class="mfoot"><button id="ai_go">この画像で読み取る</button><button class="sub" id="ai_re">画像を選び直す</button><button class="cancel" data-close="ai">やめる</button></div></div>' +
+    '<div class="card"><div class="row"><b>イベントを登録する</b><span>' + (ai ? '<button id="aibtn">📷 チラシで投稿</button> ' : "") + '<button id="newbtn">新しいイベントを登録</button></span></div>' +
+    (ai ? '<input type="file" id="aifile" accept="image/*" multiple style="display:none"><div class="muted" style="margin-top:6px">「チラシで投稿」：チラシの画像を選ぶと、AIが内容を読み取って、登録の入力欄に入れます。確認して、直してから、登録できます。表と裏がある場合は、2枚まで選べます。<br><b>読み取りを始めると、登録しなくても、1回分に数えられます（今月 ' + d.flyer_ai.used + ' / ' + d.flyer_ai.limit + ' 回。2枚でも、1回です）。</b></div>' : "") +
     '<div id="p_new" class="panel modal new" style="display:' + disp("new") + '">' +
     '<div class="mhead"><span>' + (COPY && COPY.ai ? "チラシから登録（内容の確認）" : COPY ? "イベントをコピーして登録" : "新しいイベントを登録") + '</span><button data-close="new">× 閉じる</button></div>' +
     (COPY && COPY.ai ? '<div class="notice" style="background:#eef7ee;color:#1f5a3f">チラシから、AIが読み取りました。<b>内容を確認して、まちがいがあれば直してください。</b>' + (COPY.check && COPY.check.length ? '黄色の欄は、読み取れなかった、または、自信のない項目です。' : "") + '「定員」は、チラシに書かれていないときは、ご自分で入れてください。' +
-      (COPY.preview ? '<br><img src="' + COPY.preview + '" alt="選んだチラシ" style="max-width:140px;max-height:140px;border-radius:6px;margin-top:6px;border:1px solid #ccc">' : "") + '</div>'
+      (COPY.preview ? '<br><img src="' + COPY.preview + '" alt="選んだチラシ" style="max-width:140px;max-height:140px;border-radius:6px;margin-top:6px;border:1px solid #ccc">' : "") +
+      '<br><button type="button" class="sub" id="n_reai" style="margin-top:6px">別のチラシで、読み取り直す</button> <span class="muted">（読み取りは、もう1回分に数えられます。いまの入力内容は、消えます）</span></div>'
     : COPY ? '<div class="notice">「' + esc(COPY.title) + '」の内容をコピーしました。開催日と締切は、入れ直してください。</div>' : "") +
     evFields("n_", blank) +
     '<div class="notice">登録したイベントは、事務局が内容を確認してから、公開します。公開されるまでは、申込できません。</div>' +
@@ -349,8 +357,11 @@ function wire() {
   $("newbtn").onclick = function () { COPY = null; OPEN["new"] = true; render(); };
   if ($("aibtn")) {
     $("aibtn").onclick = function () { $("aifile").value = ""; $("aifile").click(); };
-    $("aifile").onchange = function () { if (this.files && this.files[0]) readFlyer(this.files[0]); };
+    $("aifile").onchange = function () { if (this.files && this.files.length) pickFlyers(Array.prototype.slice.call(this.files)); };
+    $("ai_go").onclick = readFlyer;
+    $("ai_re").onclick = function () { $("aifile").value = ""; $("aifile").click(); };
   }
+  if ($("n_reai")) $("n_reai").onclick = function () { COPY = null; OPEN["new"] = false; render(); $("aifile").value = ""; $("aifile").click(); };
   if (COPY && COPY.ai && COPY.check) { // 読み取れなかった項目を、黄色にする
     const ids = { title: "n_title", date: "n_date", time: "n_time", place: "n_place", capacity: "n_cap", detail: "n_detail" };
     COPY.check.forEach(function (k) { if ($(ids[k])) $(ids[k]).style.background = "#fff3bf"; });
@@ -363,17 +374,18 @@ function wire() {
 }
 
 function anyModal() {
-  return Object.keys(OPEN).some(function (k) { return OPEN[k] && (k === "set" || k === "new" || /^(ed|cx)_/.test(k)); });
+  return Object.keys(OPEN).some(function (k) { return OPEN[k] && (k === "set" || k === "new" || k === "ai" || /^(ed|cx)_/.test(k)); });
 }
 function closePanel(key) {
   OPEN[key] = false; delete MSG[key];
   if (key === "new") COPY = null;
+  if (key === "ai") AIPEND = null;
   render();
 }
 document.addEventListener("keydown", function (e) {
   if (e.key !== "Escape" || !DATA || !anyModal()) return;
-  Object.keys(OPEN).forEach(function (k) { if (k === "set" || k === "new" || /^(ed|cx)_/.test(k)) OPEN[k] = false; });
-  COPY = null; render();
+  Object.keys(OPEN).forEach(function (k) { if (k === "set" || k === "new" || k === "ai" || /^(ed|cx)_/.test(k)) OPEN[k] = false; });
+  COPY = null; AIPEND = null; render();
 });
 
 async function run(btn, key, fn) {
@@ -462,25 +474,48 @@ function shrinkImage(file) {
     img.src = url;
   });
 }
-async function readFlyer(file) {
-  const btn = $("aibtn");
-  if (file.size > 30 * 1024 * 1024) { setMsg("top", "err", ERR.flyer_too_big); window.scrollTo(0, 0); render(); return; }
-  btn.disabled = true;
-  setMsg("top", "ok", "チラシを読み取っています…（10〜30秒ほどかかります。画面を閉じずに、お待ちください）");
+// 画像を選んだら、すぐには読み取らず、確認の画面を出す（選び間違いを、やり直せるように）
+async function pickFlyers(files) {
+  if (files.length > 2) { alert("画像は、2枚までです（表と裏など）。最初の2枚を使います。"); files = files.slice(0, 2); }
+  if (files.some(function (f) { return f.size > 30 * 1024 * 1024; })) { setMsg("top", "err", ERR.flyer_too_big); render(); return; }
+  setMsg("top", "ok", "画像を準備しています…");
   const el = $("m_top"); if (el) { el.className = "ok"; el.textContent = MSG.top.text; }
+  try {
+    AIPEND = [];
+    for (let i = 0; i < files.length; i++) AIPEND.push(await shrinkImage(files[i]));
+    MSG.top = null;
+    OPEN["ai"] = true;
+    render();
+  } catch (e) {
+    console.error(e);
+    AIPEND = null;
+    setMsg("top", "err", "画像を読み込めませんでした（JPEGまたはPNGの画像を、選んでください）。");
+    render();
+  }
+}
+// 確認の画面で「この画像で読み取る」を押したとき
+async function readFlyer() {
+  if (!AIPEND || !AIPEND.length) return;
+  const imgs = AIPEND;
+  OPEN["ai"] = false; AIPEND = null;
+  setMsg("top", "ok", "チラシを読み取っています…（10〜30秒ほどかかります。画面を閉じずに、お待ちください）");
+  render();
+  const el = $("m_top"); if (el) { el.className = "ok"; el.textContent = MSG.top.text; }
+  if ($("aibtn")) $("aibtn").disabled = true;
   window.scrollTo(0, 0);
   try {
-    const dataUrl = await shrinkImage(file);
-    const d = await post("org_flyer_read", { image: dataUrl.split(",")[1], mime: "image/jpeg" });
+    const fields = { image: imgs[0].split(",")[1], mime: "image/jpeg" };
+    if (imgs[1]) fields.image2 = imgs[1].split(",")[1];
+    const d = await post("org_flyer_read", fields);
     if (!d.ok) { setMsg("top", "err", errText(d)); await reload(); return; }
     MSG.top = null;
-    COPY = Object.assign({ video: "" }, d.fields, { ai: true, preview: dataUrl });
+    COPY = Object.assign({ video: "" }, d.fields, { ai: true, preview: imgs[0] });
     if (DATA.flyer_ai) DATA.flyer_ai.used = d.used;
     OPEN["new"] = true;
     render();
   } catch (e) {
     console.error(e);
-    setMsg("top", "err", "チラシを読み込めませんでした（JPEGまたはPNGの画像を、選んでください）。時間をおいて、もう一度、お試しください。");
+    setMsg("top", "err", "チラシを読み取れませんでした。時間をおいて、もう一度、お試しください。");
     render();
   } finally {
     if ($("aibtn")) $("aibtn").disabled = false;
