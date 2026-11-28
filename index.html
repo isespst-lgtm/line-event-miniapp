@@ -33,6 +33,7 @@
       </div>
       <a id="evvideolink" href="#" style="display:block;text-align:center;padding:10px;border:1px solid #2e7d5b;border-radius:8px;color:#2e7d5b;font-size:14px;text-decoration:none;">▶ 動画を見る</a>
     </div>
+    <a id="evhome" href="#" style="display:none;text-align:center;margin-top:12px;padding:10px;border:1px solid #2e7d5b;border-radius:8px;color:#2e7d5b;font-size:14px;text-decoration:none;">🏠 主催団体のホームページを見る</a>
   </div>
 
   <form id="form" novalidate>
@@ -249,6 +250,10 @@
           }
           $("evvideolink").onclick = (e) => { e.preventDefault(); try { liff.openWindow({ url: ev.video.url, external: true }); } catch (_) { window.open(ev.video.url, "_blank"); } };
           $("evvideo").style.display = "block";
+        }
+        if (ev.link && /^https:\/\//.test(ev.link)) {
+          $("evhome").onclick = (e) => { e.preventDefault(); try { liff.openWindow({ url: ev.link, external: true }); } catch (_) { window.open(ev.link, "_blank"); } };
+          $("evhome").style.display = "block";
         }
         $("evcard").style.display = "block";
 

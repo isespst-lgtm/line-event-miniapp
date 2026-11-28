@@ -176,7 +176,9 @@ function evFields(px, e) {
     '<label class="f">チラシ画像のURL（https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'flyer" maxlength="500" value="' + esc(e.flyer) + '" onchange="checkFlyerInput(this)">' +
     '<div class="muted">使える画像：JPEGまたはPNG。Googleドライブの画像は、共有を「リンクを知っている全員」にしてください。PDFや動画は、ここには入れられません。</div>' +
     '<label class="f">動画のURL（YouTubeなど。https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'video" maxlength="500" value="' + esc(e.video) + '" onchange="checkVideoInput(this)">' +
-    '<div class="muted">申込ページに動画が表示され、LINEのお知らせに「動画を見る」ボタンが付きます。YouTubeは「限定公開」か「公開」にしてください。</div>';
+    '<div class="muted">申込ページに動画が表示され、LINEのお知らせに「動画を見る」ボタンが付きます。YouTubeは「限定公開」か「公開」にしてください。</div>' +
+    '<label class="f">主催団体のホームページ（または、SNS・詳細ページ）のURL（https:// で始まるもの。空欄でも構いません）</label><input type="text" id="' + px + 'link" maxlength="500" value="' + esc(e.link) + '" onchange="checkLinkInput(this)">' +
+    '<div class="muted">申込ページと、LINEのお知らせに、「主催団体のホームページ」のリンクが付きます。参加を考えている方が、団体のことを知るのに役立ちます。団体の登録のときに聞いたURLが、はじめから入っています（直せます）。</div>';
 }
 // チラシのURLを入れたときに、LINEで使えなさそうなら、すぐに知らせる（登録のときにも、あらためて確認します）
 function checkFlyerInput(el) {
@@ -196,9 +198,14 @@ function checkVideoInput(el) {
   if (!/^https:\/\/\S+$/.test(v)) { alert("動画のURLは、https:// で始まるものを、入れてください。"); return; }
   if (/\.(jpe?g|png|gif)(\?|#|$)/i.test(v)) { alert("これは画像のURLのようです。画像は「チラシ画像のURL」の欄に入れてください。"); }
 }
+function checkLinkInput(el) {
+  const v = el.value.trim();
+  if (!v) return;
+  if (!/^https:\/\/\S+$/.test(v)) alert("ホームページのURLは、https:// で始まるものを、入れてください。");
+}
 function readEv(px) {
   return { title: $(px + "title").value, date: $(px + "date").value, time: $(px + "time").value, place: $(px + "place").value,
-    capacity: $(px + "cap").value, deadline: $(px + "dl").value, detail: $(px + "detail").value, flyer: $(px + "flyer").value, video: $(px + "video").value };
+    capacity: $(px + "cap").value, deadline: $(px + "dl").value, detail: $(px + "detail").value, flyer: $(px + "flyer").value, video: $(px + "video").value, link: $(px + "link").value };
 }
 
 function render() {
@@ -228,7 +235,7 @@ function render() {
   if (!(st.fields || []).length) h = h.replace(/(<div class="card"><div class="row"><b>)/, function (m) { return '<div class="notice" style="background:#fff8e1">団体の「活動分野」が、まだ選ばれていません。右上の「設定」で、選んでください（参加者が、分野で配信を選ぶときに使います）。</div>' + m; });
 
   // 新しいイベントの登録
-  const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "" };
+  const blank = COPY || { title: "", date: "", time: "", place: "", capacity: "", deadline: "", detail: "", flyer: "", video: "", link: st.home || "" };
   const ai = d.flyer_ai && d.flyer_ai.on;
   h += '<div id="p_ai" class="panel modal new" style="display:' + disp("ai") + '">' +
     '<div class="mhead"><span>チラシの読み取り（確認）</span><button data-close="ai">× 閉じる</button></div>' +
@@ -519,7 +526,7 @@ async function readFlyer() {
     const d = await post("org_flyer_read", fields);
     if (!d.ok) { setMsg("top", "err", errText(d)); await reload(); return; }
     MSG.top = null;
-    COPY = Object.assign({ video: "" }, d.fields, { ai: true, preview: imgs[0] });
+    COPY = Object.assign({ video: "", link: (DATA.settings && DATA.settings.home) || "" }, d.fields, { ai: true, preview: imgs[0] });
     if (DATA.flyer_ai) DATA.flyer_ai.used = d.used;
     OPEN["new"] = true;
     render();
