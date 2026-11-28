@@ -22,6 +22,10 @@
   .err { color: #b00020; margin-top: 8px; }
   .ok { color: #1b5e20; margin-top: 8px; }
   .muted { color: #666; font-size: 13px; }
+  .pmenu { position: relative; display: inline-block; }
+  .pmenu-list { position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 20; min-width: 270px; background: #fff; border: 1px solid #cfd8d2; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); padding: 4px; }
+  .pmenu-list button { display: block; width: 100%; text-align: left; background: #fff; color: #222; border: 0; border-radius: 6px; padding: 12px; font-size: 15px; }
+  .pmenu-list button:hover { background: #eaf4ee; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
   .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e0e0e0; }
   .tag.pub { background: #c8e6c9; } .tag.wait { background: #ffe0b2; } .tag.stop { background: #ddd; color: #555; }
@@ -232,7 +236,10 @@ function render() {
     '<div class="muted">選んだ画像：' + (AIPEND ? AIPEND.length : 0) + ' 枚（1枚目を、LINEの配信と申込ページの、チラシに使います）</div>' +
     '<div class="notice"><b>読み取りを始めると、結果を登録しなくても、今月の回数から1回分が減ります</b>（今月 ' + (ai ? d.flyer_ai.used + ' / ' + d.flyer_ai.limit : "") + ' 回。2枚でも、1回分です）。画像を選び間違えたときは、読み取りの前に、「画像を選び直す」か「やめる」を押してください。</div>' +
     '<div class="mfoot"><button id="ai_go">この画像で読み取る</button><button class="sub" id="ai_re">画像を選び直す</button><button class="cancel" data-close="ai">やめる</button></div></div>' +
-    '<div class="card"><div class="row"><b>イベントを登録する</b><span>' + (ai ? '<button id="aibtn">📷 チラシで投稿</button> ' : "") + '<button id="newbtn">新しいイベントを登録</button></span></div>' +
+    '<div class="card"><div class="row"><b>イベントを登録する</b><span class="pmenu"><button id="postbtn" type="button">＋ 新規投稿 ▼</button><div id="postmenu" class="pmenu-list" style="display:none">' +
+      '<button type="button" id="newbtn">✍ 入力して登録（通常の投稿）</button>' +
+      (ai ? '<button type="button" id="aibtn">📷 チラシで投稿（AIが読み取る）</button>' : "") +
+    '</div></span></div>' +
     (ai ? '<input type="file" id="aifile" accept="image/*" multiple style="display:none"><div class="muted" style="margin-top:6px">「チラシで投稿」：チラシの画像を選ぶと、AIが内容を読み取って、登録の入力欄に入れます。確認して、直してから、登録できます。表と裏がある場合は、2枚まで選べます。<br><b>読み取りを始めると、登録しなくても、1回分に数えられます（今月 ' + d.flyer_ai.used + ' / ' + d.flyer_ai.limit + ' 回。2枚でも、1回です）。</b></div>' : "") +
     '<div id="p_new" class="panel modal new" style="display:' + disp("new") + '">' +
     '<div class="mhead"><span>' + (COPY && COPY.ai ? "チラシから登録（内容の確認）" : COPY ? "イベントをコピーして登録" : "新しいイベントを登録") + '</span><button data-close="new">× 閉じる</button></div>' +
@@ -354,9 +361,11 @@ function wire() {
     };
   });
   $("s_note").oninput = prev; $("s_flyer").onchange = prev; prev();
-  $("newbtn").onclick = function () { COPY = null; OPEN["new"] = true; render(); };
+  $("postbtn").onclick = function (e) { e.stopPropagation(); const m = $("postmenu"); m.style.display = m.style.display === "none" ? "block" : "none"; };
+  $("postmenu").onclick = function (e) { e.stopPropagation(); };
+  $("newbtn").onclick = function () { $("postmenu").style.display = "none"; COPY = null; OPEN["new"] = true; render(); };
   if ($("aibtn")) {
-    $("aibtn").onclick = function () { $("aifile").value = ""; $("aifile").click(); };
+    $("aibtn").onclick = function () { $("postmenu").style.display = "none"; $("aifile").value = ""; $("aifile").click(); };
     $("aifile").onchange = function () { if (this.files && this.files.length) pickFlyers(Array.prototype.slice.call(this.files)); };
     $("ai_go").onclick = readFlyer;
     $("ai_re").onclick = function () { $("aifile").value = ""; $("aifile").click(); };
@@ -382,6 +391,7 @@ function closePanel(key) {
   if (key === "ai") AIPEND = null;
   render();
 }
+document.addEventListener("click", function () { const m = document.getElementById("postmenu"); if (m) m.style.display = "none"; });
 document.addEventListener("keydown", function (e) {
   if (e.key !== "Escape" || !DATA || !anyModal()) return;
   Object.keys(OPEN).forEach(function (k) { if (k === "set" || k === "new" || k === "ai" || /^(ed|cx)_/.test(k)) OPEN[k] = false; });
